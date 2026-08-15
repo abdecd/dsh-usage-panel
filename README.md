@@ -1,10 +1,10 @@
 <div align="center">
 
-# dsh-usage-stats
+# dsh-usage-panel
 
 Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), shown as a page under **Settings → Usage** in the web GUI. The plugin rescans persisted session logs and never writes anything back.
 
-[简体中文](README.zh-CN.md) · [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![version](https://img.shields.io/badge/version-0.1.0-orange)](package.json)
+[简体中文](README.zh-CN.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 <img src="assets/screenshot-hero.png" width="620" alt="Usage statistics page in DeepSeek Harness settings" />
 
@@ -28,17 +28,20 @@ Hovering a bar or a donut segment shows the exact breakdown:
 The plugin ships as a bundle: `dsh plugin add` appends it to the profile's bundle list, and the patch row activates the host half.
 
 ```sh
-# from GitHub
-dsh plugin --profile web add github:AlfredChaos/dsh-usage-stats
+# from npm (recommended)
+dsh plugin --profile web add dsh-usage-panel
+
+# or from GitHub
+dsh plugin --profile web add github:AlfredChaos/dsh-usage-panel
 
 # or from a local checkout
-dsh plugin --profile web add ./dsh-usage-stats
+dsh plugin --profile web add ./dsh-usage-panel
 ```
 
-Restart `dsh --profile web` and open **Settings → Usage**. The package contains plain JavaScript under `lib/` — there is no build step, so git installs work without pnpm build allowances. To remove it:
+Restart `dsh --profile web` and open **Settings → Usage**. The npm package ships prebuilt JavaScript under `lib/` with no install scripts; GitHub installs need no pnpm build allowance either, because the same files are committed to the repository. To remove it:
 
 ```sh
-dsh plugin --profile web remove dsh-usage-stats
+dsh plugin --profile web remove dsh-usage-panel
 ```
 
 ## Where the numbers come from

@@ -1,10 +1,10 @@
 <div align="center">
 
-# dsh-usage-stats
+# dsh-usage-panel
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Token 用量统计插件，在 Web GUI 的「设置 → 消耗统计」下展示。插件只重算持久化的会话日志，不会写回任何数据。
 
-[English](README.md) · [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![version](https://img.shields.io/badge/version-0.1.0-orange)](package.json)
+[English](README.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 <img src="assets/screenshot-hero.png" width="620" alt="DeepSeek Harness 设置中的消耗统计页面" />
 
@@ -28,17 +28,20 @@
 插件以 bundle 形式发布：`dsh plugin add` 会把它追加到 profile 的 bundle 列表，patch 行负责挂载 Host 半。
 
 ```sh
-# 从 GitHub 安装
-dsh plugin --profile web add github:AlfredChaos/dsh-usage-stats
+# 从 npm 安装（推荐）
+dsh plugin --profile web add dsh-usage-panel
+
+# 或从 GitHub 安装
+dsh plugin --profile web add github:AlfredChaos/dsh-usage-panel
 
 # 或从本地目录安装
-dsh plugin --profile web add ./dsh-usage-stats
+dsh plugin --profile web add ./dsh-usage-panel
 ```
 
-重启 `dsh --profile web`，打开「设置 → 消耗统计」。包内 `lib/` 下是已提交的纯 JavaScript 产物，没有构建步骤，因此 git 安装不需要 pnpm 的构建放行。卸载：
+重启 `dsh --profile web`，打开「设置 → 消耗统计」。npm 包内 `lib/` 下是预构建的纯 JavaScript 产物，无安装脚本；GitHub 安装同样不需要 pnpm 的构建放行，因为仓库里提交了相同的文件。卸载：
 
 ```sh
-dsh plugin --profile web remove dsh-usage-stats
+dsh plugin --profile web remove dsh-usage-panel
 ```
 
 ## 数据来源
