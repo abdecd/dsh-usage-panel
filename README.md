@@ -6,7 +6,7 @@ Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 [简体中文](README.zh-CN.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Mentioned in Awesome DeepSeek Harness](https://awesome.re/mentioned-badge.svg)](https://github.com/0xsline/awesome-deepseek-harness)
 
-<img src="assets/demo.gif" width="620" alt="dsh-usage-panel usage demo: loading, animated statistics, hover tooltips and range switching" />
+<img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/demo.gif" width="620" alt="dsh-usage-panel usage demo: loading, animated statistics, hover tooltips and range switching" />
 
 </div>
 
@@ -21,7 +21,7 @@ Hovering a bar or a donut segment shows the exact breakdown:
 
 | Bar tooltip | Donut tooltip | Dark theme |
 | --- | --- | --- |
-| <img src="assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="assets/screenshot-hover-donut.png" width="200" alt="Donut hover tooltip" /> | <img src="assets/screenshot-dark.png" width="200" alt="Dark theme" /> |
+| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="Donut hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-dark.png" width="200" alt="Dark theme" /> |
 
 ## Install
 

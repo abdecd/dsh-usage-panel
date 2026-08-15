@@ -27,9 +27,12 @@
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",
-    "README.zh-CN.md",
-    "assets"
+    "README.zh-CN.md"
   ],
+  "scripts": {
+    "check-pack": "node scripts/check-pack.mjs",
+    "prepublishOnly": "npm run check-pack"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

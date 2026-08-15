@@ -6,7 +6,7 @@
 
 [English](README.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Mentioned in Awesome DeepSeek Harness](https://awesome.re/mentioned-badge.svg)](https://github.com/0xsline/awesome-deepseek-harness)
 
-<img src="assets/demo.gif" width="620" alt="dsh-usage-panel 使用演示：加载、统计动画、悬停明细与时间范围切换" />
+<img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/demo.gif" width="620" alt="dsh-usage-panel 使用演示：加载、统计动画、悬停明细与时间范围切换" />
 
 </div>
 
@@ -21,7 +21,7 @@
 
 | 柱状图悬停 | 环形图悬停 | 暗色主题 |
 | --- | --- | --- |
-| <img src="assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="assets/screenshot-hover-donut.png" width="200" alt="环形图悬停明细" /> | <img src="assets/screenshot-dark.png" width="200" alt="暗色主题" /> |
+| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="环形图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-dark.png" width="200" alt="暗色主题" /> |
 
 ## 安装
 
