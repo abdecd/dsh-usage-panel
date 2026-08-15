@@ -38,7 +38,9 @@ npm pack --dry-run   # 发布前人工确认清单
 - 组件拆分：单文件 ≤ ~300 行（竞品 token-usage 的 1453 行 god component 是反面教材）。
 - host 错误只返回**机器可读错误码**，client 按码查词典渲染——禁止 host 返回中文文案再由 client 正则匹配翻译（dashboard `i18n.tsx:26-45` 的脆做法）。
 - 纯函数先行：聚合/单位换算/四分位/导出防护等逻辑必须先抽成纯函数 + 单测，再进 UI。
-- 客户端 bundle 形态是硬契约：`window.__ModuleLoader__.load({ id: 'dsh-usage-panel', factory(require) })`，`exports.apply` + `exports.inject`。改这个形状等于破坏宿主加载。
+- 客户端 bundle 形态是硬契约：`window.__ModuleLoader__.load({ id: 'dsh-usage-panel', factory(require) })`，`exports.apply` + `exports.inject`。改这个形状等于破坏宿主加载。构建 = esbuild + `scripts/wrap-client.mjs`（wrapper 里 `var React = require('react')` 供经典 JSX transform 使用）。
+- **数据路径二选一（同一 reducer）**：投影模式（`sessionProjections` + `sessionProjectionCache`，增量落盘）与全量重扫模式（`sessionQuery` 重放）共用 `src/host/projection.ts` 的 `applyEvent`。加记账逻辑只改 reducer + 单测，两路同时生效。模式切换在 `src/host/index.ts` 的 `mode` 判定，fail-soft（注册失败 → scan → none）。
+- 测试：`tests/*.test.ts` 用 esbuild 编译后跑 Node 内置 test runner；fixture 锁口径（UTC 日桶、fork 去重、重试替换、压缩归因）。
 
 ## 5. 正确性红线（本项目的壁垒，任何重构不得破坏）
 
@@ -74,6 +76,19 @@ npm pack --dry-run   # 发布前人工确认清单
 ### 6.3 竞品红线（明确不吸收，见 iteration-strategy.md §6）
 
 200 会话静默截断（token-stats）；裸 HTTP 无 authority（token-stats）；不看页面可见性的 10s 轮询（token-stats）；无 fork/seed 去重（dashboard）；硬编码虚构价格表（dashboard）；宿主 DOM 探测做悬浮窗（dashboard）；host 文案正则做 i18n（dashboard）；缓存字段白名单人工维护（dashboard）；1453 行 god component（token-usage）；install.js 字符串改用户 patch（token-stats）；tsdown 硬依赖 monorepo checkout（token-usage）。
+
+### 6.4 v0.2.0 开发期踩坑（TS 化 + 投影期间真实踩过）
+
+- **投影注册表的冷折叠是单趟**：`buildCell` = `init()` + 逐事件 `apply()`，无回看。种子边界因此用"武装"语义：看到最后一个 `session/end-seed` 之前**一律不计数**；`foldEvents`（自控路径）必须先预扫最后一个标记再折叠；`session/end-seed` 分支必须"last marker wins"（`seq <= seedEnd` 时保持原值），否则预置的 seedEnd 会被更早的标记覆盖。
+- **`mergeSessionValue` 是纯函数**：返回值必须重新赋值（`a = mergeSessionValue(a, …)`），漏掉会静默丢数据——scan.ts 与 index.ts 都踩过。
+- **zod v4 的 `z.record` 签名变了**：`z.record(valueSchema)` 在 v4 里被当作 key schema；必须 `z.record(z.string(), valueSchema)`。
+- **`SessionId` 是品牌类型**：`readSession/readTitle/coldSnapshot` 拒绝裸 `string`；用 `header.id` 本体，别 `String()`。
+- **`@deepseek-ai/cordis` 版本是 `^4.0.1`**（cordis v4 fork），不是 rc.6 号段；所有 dsh 包的 peer 都要求它。
+- **投影状态里 `totals` 无 `total` 字段**（四桶即状态，total 是视图层派生）；断言/测试别直接读 `state.totals.total`。
+- **TS 经典 JSX transform 需要 `import * as React`**（否则 TS2686 UMD global）；esbuild 产物引用 wrapper 的 `var React`，两者同一模块实例。
+- **`node --test` 传目录不识别**：必须传 glob `'tests-dist/**/*.test.js'`（spawnSync 里字符串 glob 由 Node 展开）。
+- **`createElement(ClassComp, props, children)` 类型报错时**：把 `children` 声明为可选即可（BoundaryProps）。
+- **NODE_AUTH_TOKEN 与 OIDC provenance 互斥**：publish.yml 不设 token，npm 走 OIDC。
 
 ## 7. 文档同步义务
 

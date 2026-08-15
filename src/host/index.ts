@@ -11,7 +11,6 @@
 // payloads return instantly with `stale: true` while a background rescan
 // refreshes; the refresh button forces a synchronous scan. Read-only.
 import type { Context } from '@deepseek-ai/cordis'
-import '@deepseek-ai/cordis-plugin-timer'
 import type { SessionQueryEngine, SessionRecord } from '@deepseek-ai/dsh-session-query'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'

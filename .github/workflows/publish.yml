@@ -1,0 +1,46 @@
+# Publish to npm via Trusted Publishing (OIDC) — no registry token in secrets.
+# Prerequisites (manual, once):
+#   1. npmjs.com → package page → Access → Publish access: set to the GitHub
+#      workflow's OIDC publisher (e.g. `github.com-org-org:  your-repo`).
+#   2. Tag the release commit (after `npm version <x.y.z>`) and push the tag.
+# The tag name MUST equal the package version in package.json (guarded below).
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: npm test
+      - name: Pack gate (no README static assets in the tarball)
+        run: npm run check-pack
+      - name: Verify tag matches package version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "tag v$TAG_VERSION does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+      - name: Publish
+        # Trusted Publishing (OIDC): no NODE_AUTH_TOKEN — npm authenticates via
+        # the OIDC token from the workflow's id-token permission.
+        run: npm publish --provenance --access public

@@ -1,3 +1,8 @@
+declare module '@deepseek-ai/cordis' {
+    interface Context {
+        interval(callback: () => void, delay: number): () => void;
+    }
+}
 export interface HostRpcResult<T> {
     ok: boolean;
     value?: T;

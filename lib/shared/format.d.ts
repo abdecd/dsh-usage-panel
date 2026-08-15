@@ -27,7 +27,7 @@ export declare function dateLabel(key: string): string;
 export declare function dateCN(key: string, locale: Locale): string;
 /** Monday-first weekday index 0..6 for a UTC day key. */
 export declare function weekdayIndexUTC(key: string): number;
-/** Time-of-day label for "updated at" (locale-aware). */
+/** Time-of-day label for "updated at" (UTC, matching the day-key declaration). */
 export declare function formatClock(ts: number, locale: Locale): string;
 /** Fraction 0..1 → percent string for the hit-rate card. */
 export declare function pctFull(v: number): string;
