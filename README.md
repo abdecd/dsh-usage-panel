@@ -6,7 +6,7 @@ Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 [简体中文](README.zh-CN.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<img src="assets/screenshot-hero.png" width="620" alt="Usage statistics page in DeepSeek Harness settings" />
+<img src="assets/demo.gif" width="620" alt="dsh-usage-panel usage demo: loading, animated statistics, hover tooltips and range switching" />
 
 </div>
 

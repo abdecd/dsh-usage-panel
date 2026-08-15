@@ -6,7 +6,7 @@
 
 [English](README.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<img src="assets/screenshot-hero.png" width="620" alt="DeepSeek Harness 设置中的消耗统计页面" />
+<img src="assets/demo.gif" width="620" alt="dsh-usage-panel 使用演示：加载、统计动画、悬停明细与时间范围切换" />
 
 </div>
 
