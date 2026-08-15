@@ -85,12 +85,12 @@ export function weekdayIndexUTC(key: string): number {
   return (parseDayKeyUTC(key).getUTCDay() + 6) % 7
 }
 
-/** Time-of-day label for "updated at" (locale-aware). */
+/** Time-of-day label for "updated at" (UTC, matching the day-key declaration). */
 export function formatClock(ts: number, locale: Locale): string {
   const d = new Date(ts)
-  const h = String(d.getHours()).padStart(2, '0')
-  const m = String(d.getMinutes()).padStart(2, '0')
-  return h + ':' + m
+  const h = String(d.getUTCHours()).padStart(2, '0')
+  const m = String(d.getUTCMinutes()).padStart(2, '0')
+  return h + ':' + m + (locale === 'zh-CN' ? '' : ' UTC')
 }
 
 /** Fraction 0..1 → percent string for the hit-rate card. */
