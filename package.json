@@ -1,5 +1,5 @@
 {
-  "name": "dsh-usage-stats",
+  "name": "dsh-usage-panel",
   "version": "0.1.0",
   "description": "DeepSeek Harness 消耗统计插件：设置页「消耗统计」展示 Token 用量 KPI、半年活跃贡献热力图、按模型堆叠柱状图与模型环形图（Host 预热扫描 + RPC，只读重算会话日志）",
   "type": "module",
@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AlfredChaos/dsh-usage-stats.git"
+    "url": "git+https://github.com/AlfredChaos/dsh-usage-panel.git"
   },
   "keywords": [
     "deepseek-harness",
