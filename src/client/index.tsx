@@ -24,10 +24,9 @@ export function apply(ctx: ClientCtx): void {
   }
 
   const i18n = createI18n(ctx.locale)
-  const disposeLocaleEvent =
-    ctx.events && ctx.events.on
-      ? ctx.events.on('locale/change', () => i18n.update())
-      : null
+  // Backup wiring: the runtime's own subscribe (inside createI18n) already
+  // covers switches; ctx.on is cordis-standard for the 'locale/change' event.
+  const disposeLocaleEvent = ctx.on ? ctx.on('locale/change', () => i18n.update()) : null
 
   const slots = ctx.slots
   slots.inject('settings.section', () =>
@@ -45,5 +44,6 @@ export function apply(ctx: ClientCtx): void {
   ctx.effect(() => () => {
     if (tag !== null && tag.isConnected) tag.remove()
     if (disposeLocaleEvent) disposeLocaleEvent()
+    i18n.dispose()
   })
 }

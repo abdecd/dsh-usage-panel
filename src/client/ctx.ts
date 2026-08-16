@@ -29,12 +29,12 @@ export interface ClientCtx {
   slots: SlotsLike
   connection: { rpc: RpcLike }
   locale?: {
-    register(ns: string, locale: string, dict: Record<string, string>): () => void
+    register(ns: string, dicts: Record<string, Record<string, string>>): () => void
     bind(ns: string): (key: string, params?: Record<string, unknown>) => string
     getSnapshot(): { active: string }
+    subscribe?(fn: () => void): () => void
   }
-  events?: {
-    on(event: string, cb: (snapshot: unknown) => void): () => void
-  }
+  /** Cordis Context is the event emitter itself: ctx.on('locale/change', …). */
+  on?(event: string, cb: (snapshot: unknown) => void): () => void
   effect(fn: () => (() => void) | void): void
 }

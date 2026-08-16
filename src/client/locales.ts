@@ -150,12 +150,20 @@ export interface I18n {
   getSnapshot(): Locale
   /** Re-read the active locale; called by the caller on 'locale/change'. */
   update(): void
+  /** Release runtime subscriptions (plugin dispose). */
+  dispose(): void
 }
 
 export interface LocaleRuntimeLike {
-  register(ns: string, locale: string, dict: Record<string, string>): () => void
+  /**
+   * DSH locale ids are `'zh'` / `'en'` (LOCALE_IDS) — NOT 'zh-CN'/'en-US'.
+   * Object form mirrors the framework's own registration convention.
+   */
+  register(ns: string, dicts: Record<string, Record<string, string>>): () => void
   bind(ns: string): (key: string, params?: Record<string, unknown>) => string
   getSnapshot(): { active: string }
+  /** LocaleFace subscribe: fires on locale switches AND dict registrations. */
+  subscribe?(fn: () => void): () => void
 }
 
 function interpolate(text: string, params?: Record<string, string | number>): string {
@@ -166,11 +174,12 @@ function interpolate(text: string, params?: Record<string, string | number>): st
   })
 }
 
+const DICTS: Record<Locale, Record<string, string>> = { 'zh-CN': zhCN, 'en-US': enUS }
+
 function lookup(locale: Locale, key: string): string {
-  const dict = dictionaries[locale]
+  const dict = DICTS[locale]
   if (dict && dict[key]) return dict[key]
-  const zh = dictionaries['zh-CN']!
-  return zh[key] || key
+  return DICTS['zh-CN']![key] || key
 }
 
 /** Build the i18n instance; uses the DSH locale runtime when present. */
@@ -182,38 +191,56 @@ export function createI18n(runtime?: LocaleRuntimeLike): I18n {
       subscribe: () => () => {},
       getSnapshot: () => 'zh-CN',
       update: () => {},
+      dispose: () => {},
     }
   }
+  const rt = runtime // const narrowing survives into closures
   const listeners = new Set<() => void>()
-  let active: Locale = normalizeLocale(runtime.getSnapshot().active)
+  let active: Locale = normalizeLocale(rt.getSnapshot().active)
   try {
-    for (const locale of Object.keys(dictionaries)) {
-      runtime.register(NS, locale, dictionaries[locale]!)
-    }
+    rt.register(NS, { zh: zhCN, en: enUS })
   } catch {
-    // Registration is best-effort; the local dictionaries still work.
+    // Best-effort: local dictionaries remain the fallback either way.
   }
-  const translated = runtime.bind(NS)
+  const translated = rt.bind(NS)
+  const resolve = (key: string, params?: Record<string, string | number>): string => {
+    let text: string | undefined
+    try {
+      // No params here: the runtime fails loud by returning the KEY ITSELF,
+      // and interpolation is our single source below.
+      text = translated(key)
+    } catch {
+      text = undefined
+    }
+    // A truthy-but-unresolved key must NOT bypass the local dictionary.
+    if (!text || text === key) text = lookup(active, key)
+    return interpolate(text, params)
+  }
+  function update(): void {
+    const next = normalizeLocale(rt.getSnapshot().active)
+    if (next !== active) {
+      active = next
+      for (const cb of listeners) cb()
+    }
+  }
+  // Ride the runtime's own snapshot subscription: covers locale switches AND
+  // late dictionary registrations (both bump its revision).
+  const disposeRuntimeSub = rt.subscribe ? rt.subscribe(update) : null
   return {
-    t: (key, params) => {
-      try {
-        return interpolate(translated(key) || lookup(active, key), params)
-      } catch {
-        return interpolate(lookup(active, key), params)
-      }
+    t: resolve,
+    // Getter: `locale` must track switches (the field itself would be a
+    // creation-time snapshot).
+    get locale(): Locale {
+      return active
     },
-    locale: active,
     subscribe: (cb) => {
       listeners.add(cb)
       return () => listeners.delete(cb)
     },
     getSnapshot: () => active,
-    update: () => {
-      const next = normalizeLocale(runtime.getSnapshot().active)
-      if (next !== active) {
-        active = next
-        for (const cb of listeners) cb()
-      }
+    update,
+    dispose: () => {
+      if (disposeRuntimeSub) disposeRuntimeSub()
     },
   }
 }

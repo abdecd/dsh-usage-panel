@@ -79,6 +79,10 @@ npm pack --dry-run   # 发布前人工确认清单
 
 ### 6.4 v0.2.0 开发期踩坑（TS 化 + 投影期间真实踩过）
 
+- **DSH locale ID 是 `'zh'` / `'en'`，不是 `'zh-CN'/'en-US'`**（真实事故：词典注册到错误 ID 下，页面全部显示原始键 `nav.label` 等）。注册用 `locale.register(NS, { zh: dict, en: dict })`；内部 Locale 类型 `'zh-CN'/'en-US'` 只是我们的归一化表示。
+- **locale 运行时的 `translate` 找不到键时"fail loud"返回键本身**：`translated(key) || 本地词典` 这类兜底会被"键本身"这个真值绕过，必须显式 `text === key` 判失败再走本地词典；且 `translated` 调用不要传 params（插值统一由我们做）。
+- **`i18n.locale` 必须是 getter**：字段快照在语言切换后保持旧值，格式化函数会一直用初始语言。
+- **`ctx.on('locale/change', …)` 直接挂在 ctx 上**（cordis Context 就是 EventEmitter，没有 `ctx.events`）；更稳的是挂 `locale.subscribe(update)`（切换与迟到词典注册都会 bump revision）。
 - **投影注册表的冷折叠是单趟**：`buildCell` = `init()` + 逐事件 `apply()`，无回看。种子边界因此用"武装"语义：看到最后一个 `session/end-seed` 之前**一律不计数**；`foldEvents`（自控路径）必须先预扫最后一个标记再折叠；`session/end-seed` 分支必须"last marker wins"（`seq <= seedEnd` 时保持原值），否则预置的 seedEnd 会被更早的标记覆盖。
 - **`mergeSessionValue` 是纯函数**：返回值必须重新赋值（`a = mergeSessionValue(a, …)`），漏掉会静默丢数据——scan.ts 与 index.ts 都踩过。
 - **zod v4 的 `z.record` 签名变了**：`z.record(valueSchema)` 在 v4 里被当作 key schema；必须 `z.record(z.string(), valueSchema)`。
