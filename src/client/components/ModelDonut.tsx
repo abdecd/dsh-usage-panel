@@ -2,8 +2,11 @@
 // Segment positioning uses strokeDashoffset only — the dsw-ust-donut-spin
 // keyframes own rotation, so a CSS transform would be overridden (pitfall §6.2).
 // Tooltips anchor at the pointer because a circle's bbox spans the whole donut.
+// The list carries a per-model cache hit rate (new): same formula as the KPI
+// card, computed per model row from its four disjoint buckets.
 import type { ModelItem } from '../../shared/contract.ts'
-import { fmtTokens, pctOf } from '../../shared/format.ts'
+import { fmtTokens, pctFull, pctOf } from '../../shared/format.ts'
+import { hitRate } from '../../shared/usage.ts'
 import type { I18n } from '../locales.ts'
 import type { Tip } from '../hooks.ts'
 import { modelRows } from '../hooks.ts'
@@ -28,6 +31,7 @@ export function ModelDonut({ byModel, total, i18n, onTip }: ModelDonutProps): JS
     const frac = total ? r.total / total : 0
     if (frac <= 0) continue
     const len = frac * C
+    const rate = hitRate(r.buckets)
     segs.push(
       <circle
         key={r.model}
@@ -49,6 +53,7 @@ export function ModelDonut({ byModel, total, i18n, onTip }: ModelDonutProps): JS
             lines: [
               { label: t('unit.tokens', { n: '' }).trim() || 'Tokens', value: fmtTokens(r.total, locale) },
               { label: t('donut.share'), value: pctOf(r.total, total) + '%', color: r.rest ? 'var(--dsw-alias-label-secondary)' : r.color },
+              { label: t('donut.hitRate'), value: rate === null ? '—' : pctFull(rate) + '%' },
             ],
           })
         }}
@@ -58,16 +63,20 @@ export function ModelDonut({ byModel, total, i18n, onTip }: ModelDonutProps): JS
     acc += len
   }
 
-  const listRows = rows.map((r) => (
-    <div key={r.model} className="dsw-ust-mrow">
-      <i className="dsw-ust-dot" style={{ background: r.rest ? 'var(--dsw-alias-label-secondary)' : r.color!, opacity: r.rest ? 0.45 : 1 }} />
-      <span className="dsw-ust-mname" title={r.model}>
-        {r.model}
-      </span>
-      <span className="dsw-ust-mtokens">{fmtTokens(r.total, locale)}</span>
-      <span className="dsw-ust-mpct">{pctOf(r.total, total) + '%'}</span>
-    </div>
-  ))
+  const listRows = rows.map((r) => {
+    const rate = hitRate(r.buckets)
+    return (
+      <div key={r.model} className="dsw-ust-mrow">
+        <i className="dsw-ust-dot" style={{ background: r.rest ? 'var(--dsw-alias-label-secondary)' : r.color!, opacity: r.rest ? 0.45 : 1 }} />
+        <span className="dsw-ust-mname" title={r.model}>
+          {r.model}
+        </span>
+        <span className="dsw-ust-mtokens">{fmtTokens(r.total, locale)}</span>
+        <span className="dsw-ust-mpct">{pctOf(r.total, total) + '%'}</span>
+        <span className="dsw-ust-mrate">{rate === null ? '—' : pctFull(rate) + '%'}</span>
+      </div>
+    )
+  })
 
   return (
     <div className="dsw-ust-card">
@@ -85,7 +94,16 @@ export function ModelDonut({ byModel, total, i18n, onTip }: ModelDonutProps): JS
             </text>
           </svg>
         </div>
-        <div className="dsw-ust-mlist">{listRows}</div>
+        <div className="dsw-ust-mlist">
+          <div className="dsw-ust-mhead">
+            <span style={{ width: 18, flexShrink: 0 }} />
+            <span className="h-model">{t('donut.model')}</span>
+            <span>{t('donut.tokens')}</span>
+            <span className="h-share">{t('donut.share')}</span>
+            <span className="h-rate">{t('donut.hitRate')}</span>
+          </div>
+          {listRows}
+        </div>
       </div>
     </div>
   )

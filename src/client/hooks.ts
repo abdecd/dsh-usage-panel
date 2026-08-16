@@ -1,5 +1,6 @@
 // dsh-usage-panel · shared client hooks and helpers.
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { Buckets } from '../shared/contract.ts'
 import type { I18n } from './locales.ts'
 
 export const PALETTE = ['#4f8cff', '#22c55e', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#e11d48', '#14b8a6']
@@ -10,15 +11,44 @@ export interface ModelRow {
   total: number
   color: string | null
   rest: boolean
+  /** The row's four disjoint buckets (top-5 rows own buckets; the merged
+   *  "other" row carries the SUM of the remaining models) — feeds the
+   *  per-model cache hit rate in the donut list. */
+  buckets: Buckets
 }
 
-export function modelRows(byModel: Array<{ model: string; total: number }>, otherLabel: string): ModelRow[] {
+export function modelRows(
+  byModel: Array<{ model: string; total: number; input: number; output: number; cacheRead: number; cacheWrite: number }>,
+  otherLabel: string,
+): ModelRow[] {
   const rows: ModelRow[] = []
   for (let i = 0; i < byModel.length && i < 5; i++) {
-    rows.push({ model: byModel[i]!.model, total: byModel[i]!.total, color: PALETTE[i % PALETTE.length]!, rest: false })
+    const m = byModel[i]!
+    rows.push({
+      model: m.model,
+      total: m.total,
+      color: PALETTE[i % PALETTE.length]!,
+      rest: false,
+      buckets: { input: m.input, output: m.output, cacheRead: m.cacheRead, cacheWrite: m.cacheWrite },
+    })
   }
   if (byModel.length > 5) {
-    rows.push({ model: otherLabel, total: byModel.slice(5).reduce((s, m) => s + m.total, 0), color: null, rest: true })
+    const rest = byModel.slice(5)
+    rows.push({
+      model: otherLabel,
+      total: rest.reduce((s, m) => s + m.total, 0),
+      color: null,
+      rest: true,
+      buckets: rest.reduce(
+        (acc, m) => ({
+          input: acc.input + m.input,
+          output: acc.output + m.output,
+          cacheRead: acc.cacheRead + m.cacheRead,
+          cacheWrite: acc.cacheWrite + m.cacheWrite,
+        }),
+        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ),
+    })
   }
   return rows
 }

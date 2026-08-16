@@ -2,7 +2,7 @@
 // Default 7 days; per-model colors; hover tooltip with per-model breakdown;
 // 7/14/30 range switching; count-up-free (CSS grow animation preserved).
 import { useState } from 'react'
-import type { DayRecord } from '../../shared/contract.ts'
+import type { DayRecord, ModelItem } from '../../shared/contract.ts'
 import { fmtCompact, fmtTokens, niceCeil, dateLabel, dateCN } from '../../shared/format.ts'
 import type { I18n } from '../locales.ts'
 import type { Tip } from '../hooks.ts'
@@ -11,7 +11,7 @@ import * as React from 'react'
 
 interface BarChartProps {
   days: DayRecord[]
-  byModel: Array<{ model: string; total: number }>
+  byModel: ModelItem[]
   i18n: I18n
   onTip: (tip: Tip | null) => void
 }

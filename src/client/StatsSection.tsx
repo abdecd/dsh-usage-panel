@@ -128,9 +128,17 @@ export function StatsSection({ rpc, i18n: baseI18n }: StatsSectionProps): JSX.El
       <Tooltip tip={donutTip} />
       <Tooltip tip={heatTip} />
       <div className="dsw-ust-head">
-        <div>
-          <h2>{t('nav.label')}</h2>
-          {subText ? <div className="dsw-ust-sub">{subText}</div> : null}
+        <div className="dsw-ust-head-title">
+          <svg className="dsw-ust-page-icon" width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
+            <path d="M3 13V9.5" />
+            <path d="M8 13V5.5" />
+            <path d="M13 13V3" />
+            <path d="M2 13.5h12" />
+          </svg>
+          <div>
+            <h2>{t('nav.label')}</h2>
+            {subText ? <div className="dsw-ust-sub">{subText}</div> : null}
+          </div>
         </div>
         <div className="dsw-ust-head-actions">
           {data ? <ExportMenu overview={data} i18n={i18n} /> : null}
