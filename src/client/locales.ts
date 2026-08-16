@@ -47,7 +47,7 @@ export const zhCN: Record<string, string> = {
   'sessions.untitled': '未命名会话',
   'sessions.tokens': '{tokens} Tokens',
   'sessions.lastActive': '最近活跃 {date}',
-  'providers.title': 'Provider 用量',
+  'providers.title': '服务商用量',
   'export.button': '导出',
   'export.json': '导出 JSON',
   'export.daily': '导出每日 CSV',
