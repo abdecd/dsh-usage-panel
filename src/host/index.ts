@@ -38,6 +38,12 @@ export function apply(ctx: Context): void {
   let mode: CoverageStats['mode'] =
     registry && projCache && sq ? 'projection' : sq ? 'scan' : 'none'
 
+  console.log(
+    tag,
+    'boot: mode=' + mode,
+    'services: sessionQuery=' + Boolean(sq) + ' sessionProjections=' + Boolean(registry) + ' sessionProjectionCache=' + Boolean(projCache),
+  )
+
   // Registration is an effect on this fiber: the unit's key disappears when
   // the plugin unloads. Fail-soft: any registration problem drops to scan.
   let disposeUnit: (() => void) | null = null
@@ -199,7 +205,16 @@ export function apply(ctx: Context): void {
     )
 
   // Warm up the moment the plugin loads.
-  startScan()
+  startScan().then((o) => {
+    console.log(
+      tag,
+      'first scan done:',
+      'mode=' + o.coverage.mode,
+      'sessions=' + o.coverage.sessionsTotal + '/' + o.coverage.sessionsOk + ' (failed ' + o.coverage.sessionsFailed + ', pending ' + o.coverage.sessionsPending + ')',
+      'withUsage=' + o.allTime.sessionCount,
+      'dataRange=' + (o.coverage.from === null ? '-' : new Date(o.coverage.from).toISOString()) + '..' + (o.coverage.to === null ? '-' : new Date(o.coverage.to).toISOString()),
+    )
+  })
 
   // Keep-warm: light periodic rescan so the cached payload never goes stale.
   const stopTimer = ctx.interval(() => {
