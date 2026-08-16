@@ -38,6 +38,7 @@ export function SessionsCard({ sessions, i18n }: SessionsCardProps): JSX.Element
             <span className="dsw-ust-sname" title={s.id}>
               {s.title || t('sessions.untitled')}
             </span>
+            <span className={'dsw-ust-stag' + (s.depth > 0 ? ' sub' : '')}>{s.depth > 0 ? t('sessions.subagent') : t('sessions.main')}</span>
             <span className="dsw-ust-smeta">{date}</span>
             <span className="dsw-ust-stokens">{fmtTokens(s.totals.total, locale)}</span>
           </div>

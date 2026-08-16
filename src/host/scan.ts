@@ -117,7 +117,8 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     }
     titles.set(sessionId, title)
     // mergeSessionValue is pure — the returned aggregate replaces the old one.
-    a = mergeSessionValue(a, state, sessionId, now)
+    const depth = Number((header as { delegationDepth?: unknown }).delegationDepth) || 0
+    a = mergeSessionValue(a, state, sessionId, now, depth)
     sessionsOk += 1
   }
 

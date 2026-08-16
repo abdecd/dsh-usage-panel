@@ -62,6 +62,7 @@ export function isUsable(value: unknown): value is CachedOverview {
   if (!allTime || typeof allTime.sessionCount !== 'number') return false
   const coverage = payload.coverage as Record<string, unknown> | undefined
   if (!coverage || typeof coverage.sessionsTotal !== 'number') return false
+  if (typeof coverage.usageSessionsMain !== 'number' || typeof coverage.usageSessionsSubagent !== 'number') return false
   if (!Array.isArray(payload.topSessions) || !Array.isArray(payload.providers)) return false
   return true
 }

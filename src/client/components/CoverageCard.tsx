@@ -49,6 +49,12 @@ export function CoverageCard({ coverage, i18n }: CoverageCardProps): JSX.Element
             pending: coverage.sessionsPending,
           })}
         </span>
+        <span>
+          {t('coverage.depth', {
+            main: coverage.usageSessionsMain,
+            subagent: coverage.usageSessionsSubagent,
+          })}
+        </span>
         {coverage.mode === 'scan' ? <span>{t('coverage.events', { events: coverage.eventsCounted })}</span> : null}
         <span>{range}</span>
         {coverage.retries > 0 ? <span>{t('coverage.retries', { retries: coverage.retries })}</span> : null}

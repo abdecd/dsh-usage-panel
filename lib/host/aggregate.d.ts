@@ -4,6 +4,7 @@ export interface SessionAgg {
     id: string;
     totals: UsageTotals;
     lastActive: number;
+    depth: number;
 }
 export interface Aggregate {
     allTimeTotals: UsageTotals;
@@ -18,11 +19,13 @@ export interface Aggregate {
     compactionTokens: number;
     from: number | null;
     to: number | null;
+    usageSessionsMain: number;
+    usageSessionsSubagent: number;
     sessions: SessionAgg[];
 }
 export declare function emptyAggregate(): Aggregate;
 /** Merge one session's projection value into the aggregate (pure). */
-export declare function mergeSessionValue(a: Aggregate, value: UsagePanelState, sessionId: string, now: number): Aggregate;
+export declare function mergeSessionValue(a: Aggregate, value: UsagePanelState, sessionId: string, now: number, depth?: number): Aggregate;
 export declare function rankSessions(sessions: SessionAgg[], limit: number): SessionAgg[];
 export interface FinalizeInput {
     aggregate: Aggregate;

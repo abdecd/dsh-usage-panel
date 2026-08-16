@@ -18,6 +18,7 @@ export interface SessionAgg {
   id: string
   totals: UsageTotals
   lastActive: number
+  depth: number
 }
 
 export interface Aggregate {
@@ -33,6 +34,8 @@ export interface Aggregate {
   compactionTokens: number
   from: number | null
   to: number | null
+  usageSessionsMain: number
+  usageSessionsSubagent: number
   sessions: SessionAgg[]
 }
 
@@ -50,12 +53,14 @@ export function emptyAggregate(): Aggregate {
     compactionTokens: 0,
     from: null,
     to: null,
+    usageSessionsMain: 0,
+    usageSessionsSubagent: 0,
     sessions: [],
   }
 }
 
 /** Merge one session's projection value into the aggregate (pure). */
-export function mergeSessionValue(a: Aggregate, value: UsagePanelState, sessionId: string, now: number): Aggregate {
+export function mergeSessionValue(a: Aggregate, value: UsagePanelState, sessionId: string, now: number, depth = 0): Aggregate {
   const cutoffKey = dayKeyUTC(now - RECENT_DAYS * 24 * 3600 * 1000)
   const recent = recentOf(value, cutoffKey)
   const totals = totalsFrom(value.totals)
@@ -115,7 +120,9 @@ export function mergeSessionValue(a: Aggregate, value: UsagePanelState, sessionI
   }
   if (totals.total > 0) {
     next.allTimeSessionCount += 1
-    next.sessions.push({ id: sessionId, totals, lastActive: value.lastTime ?? 0 })
+    if (depth > 0) next.usageSessionsSubagent += 1
+    else next.usageSessionsMain += 1
+    next.sessions.push({ id: sessionId, totals, lastActive: value.lastTime ?? 0, depth })
   }
   return next
 }
@@ -163,6 +170,7 @@ export function finalizeOverview(input: FinalizeInput): Overview {
     title: titles.has(s.id) ? titles.get(s.id)! : null,
     totals: s.totals,
     lastActive: s.lastActive,
+    depth: s.depth,
   }))
   const coverage: CoverageStats = {
     mode,
@@ -176,6 +184,8 @@ export function finalizeOverview(input: FinalizeInput): Overview {
     compactionTokens: a.compactionTokens,
     from: a.from,
     to: a.to,
+    usageSessionsMain: a.usageSessionsMain,
+    usageSessionsSubagent: a.usageSessionsSubagent,
   }
   return {
     days: buildDayWindow(a.byDay, now),

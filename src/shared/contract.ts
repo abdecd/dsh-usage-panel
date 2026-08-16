@@ -73,6 +73,10 @@ export interface CoverageStats {
   compactionTokens: number
   from: number | null
   to: number | null
+  /** Sessions with counted usage, split by delegation depth: 0 = main/root
+   *  session, >=1 = subagent session (each subagent session counts as one). */
+  usageSessionsMain: number
+  usageSessionsSubagent: number
 }
 
 /** One session in the drill-down ranking (top-N by all-time total). */
@@ -81,6 +85,8 @@ export interface SessionSummary {
   title: string | null
   totals: UsageTotals
   lastActive: number
+  /** Delegation depth from the session header: 0 = main, >=1 = subagent. */
+  depth: number
 }
 
 /** One provider route seen in the logs (name resolved via llm.listProviders). */
@@ -115,4 +121,4 @@ export interface Overview {
   stale?: boolean
 }
 
-export const OVERVIEW_VERSION = 2
+export const OVERVIEW_VERSION = 3

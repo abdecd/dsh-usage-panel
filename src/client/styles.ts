@@ -103,6 +103,8 @@ export const CSS = [
   '.dsw-ust-srank{width:20px;flex-shrink:0;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;font-size:11px}',
   '.dsw-ust-sname{flex:1;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}',
   '.dsw-ust-smeta{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;flex-shrink:0}',
+  '.dsw-ust-stag{font-size:10px;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2);border-radius:4px;padding:0 5px;flex-shrink:0;line-height:16px}',
+  '.dsw-ust-stag.sub{color:#8b5cf6;border-color:rgba(139,92,246,.45)}',
   '.dsw-ust-stokens{color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}',
   '.dsw-ust-prow{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:12px;min-width:0}',
   '.dsw-ust-prow+.dsw-ust-prow{border-top:1px solid var(--dsw-alias-border-l1)}',
