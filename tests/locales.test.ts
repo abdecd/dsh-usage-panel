@@ -75,7 +75,7 @@ test('zh active resolves Chinese text (no raw keys)', () => {
   const i18n = createI18n(new FakeLocaleRuntime('zh'))
   assert.equal(i18n.t('nav.label'), '消耗统计')
   assert.equal(i18n.t('kpi.hitRate'), '缓存命中率')
-  assert.equal(i18n.t('coverage.partial'), '⚠ 部分会话读取失败，本页为部分数据')
+  assert.equal(i18n.t('kpi.sessions.detail', { total: 58, main: 1, subagent: 2 }), '总会话 58 · 有用量会话：主 1 · 子代理 2')
 })
 
 test('en active resolves English text', () => {

@@ -74,9 +74,9 @@ export const CSS = [
   '.dsw-ust-heat-months{display:grid;gap:3px;width:100%;height:14px;margin-bottom:3px;font-size:10px;color:var(--dsw-alias-label-secondary)}',
   '.dsw-ust-heat-month{white-space:nowrap;min-width:0}',
   '.dsw-ust-heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,auto);width:100%;min-width:max-content;gap:3px}',
-  '.dsw-ust-heat-cell{aspect-ratio:1/1;border-radius:2px;cursor:default}',
+  '.dsw-ust-heat-cell{aspect-ratio:1/1;border-radius:2px;cursor:default;animation:dsw-ust-heat-in .45s linear both}',
   '.dsw-ust-heat-cell:hover{box-shadow:0 0 0 1px var(--dsw-alias-border-l2)}',
-  '.dsw-ust-heat-blank{background:transparent;cursor:default}',
+  '.dsw-ust-heat-blank{background:transparent;cursor:default;animation:none}',
   '.dsw-ust-h0{background:#eef2f7}',
   '.dsw-ust-h1{background:#dbeafe}',
   '.dsw-ust-h2{background:#93c5fd}',
@@ -93,11 +93,13 @@ export const CSS = [
   '.dsw-ust-donut-seg{transform-box:fill-box;transform-origin:center;animation:dsw-ust-donut-spin .9s cubic-bezier(.16,1,.3,1) both}',
   '@keyframes dsw-ust-bar-grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}',
   '@keyframes dsw-ust-donut-spin{from{transform:rotate(-90deg)}to{transform:rotate(270deg)}}',
+  // Heatmap entrance: a left-to-right opacity wipe. Each week column starts
+  // its fade at w*0.018s and ramps linearly to opaque over 0.45s (≈0.9s total
+  // for 26 weeks), mirroring the promo GIF. Per-column delay is set inline on
+  // each cell in Heatmap.tsx; blanks opt out via .dsw-ust-heat-blank above.
+  '@keyframes dsw-ust-heat-in{from{opacity:0}to{opacity:1}}',
+  '@media (prefers-reduced-motion:reduce){.dsw-ust-heat-cell{animation:none}}',
   // ---- v0.2 additions ----
-  '.dsw-ust-coverage{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:11px;color:var(--dsw-alias-label-secondary);line-height:1.8}',
-  '.dsw-ust-coverage b{color:var(--dsw-alias-label-primary);font-weight:600}',
-  '.dsw-ust-coverage .warn{color:#d97706;font-weight:600}',
-  'body[data-ds-dark-theme] .dsw-ust-coverage .warn{color:#fbbf24}',
   '.dsw-ust-srow{display:flex;align-items:center;gap:10px;padding:7px 2px;font-size:12px;min-width:0}',
   '.dsw-ust-srow+.dsw-ust-srow{border-top:1px solid var(--dsw-alias-border-l1)}',
   '.dsw-ust-srank{width:20px;flex-shrink:0;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;font-size:11px}',

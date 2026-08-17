@@ -12,7 +12,6 @@ import type { I18n } from './locales.ts'
 import { useI18n, useLatest, type Tip } from './hooks.ts'
 import { Tooltip } from './components/Tooltip.tsx'
 import { KpiCards } from './components/KpiCards.tsx'
-import { CoverageCard } from './components/CoverageCard.tsx'
 import { Heatmap } from './components/Heatmap.tsx'
 import { BarChart } from './components/BarChart.tsx'
 import { SessionsCard } from './components/SessionsCard.tsx'
@@ -100,7 +99,7 @@ export function StatsSection({ rpc, i18n: baseI18n }: StatsSectionProps): JSX.El
     )
   } else if (error && !data) {
     body = <div className="dsw-ust-empty">{t('status.error', { msg: error })}</div>
-  } else if (allTimeTotal === 0 && (data && data.coverage.sessionsTotal === 0)) {
+  } else if (allTimeTotal === 0 && data?.coverage.sessionsTotal === 0) {
     body = (
       <div className="dsw-ust-empty">
         <div className="dsw-ust-empty-title">{t('empty.title')}</div>
@@ -112,7 +111,6 @@ export function StatsSection({ rpc, i18n: baseI18n }: StatsSectionProps): JSX.El
     body = (
       <>
         <KpiCards overview={overview} i18n={i18n} />
-        <CoverageCard coverage={overview.coverage} i18n={i18n} />
         <Heatmap days={days} i18n={i18n} onTip={setHeatTip} />
         <BarChart days={days} byModel={recentByModel} i18n={i18n} onTip={setBarTip} />
         <SessionsCard sessions={overview.topSessions} i18n={i18n} />

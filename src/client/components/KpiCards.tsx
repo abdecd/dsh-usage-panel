@@ -22,6 +22,11 @@ export function KpiCards({ overview, i18n }: KpiCardsProps): JSX.Element {
   const inputTotal = totals.input + totals.cacheRead + totals.cacheWrite // billed input (v0.1.0)
   const top = allTime.byModel[0] || null
   const rate = hitRate(totals)
+  // The session-count KPI's secondary line carries the coverage counts that
+  // used to live on the standalone 统计覆盖度 card (now removed): the grand
+  // total of session records (incl. empty/failed/pending) plus the split of
+  // sessions that actually produced usage by delegation depth.
+  const coverage = overview.coverage
 
   // Hooks must stay unconditional (hook-order invariant).
   const animatedTotal = useCountUp(total, 900)
@@ -40,6 +45,13 @@ export function KpiCards({ overview, i18n }: KpiCardsProps): JSX.Element {
       <div className="dsw-ust-kpi">
         <div className="l">{t('kpi.sessions')}</div>
         <div className="v">{String(Math.round(animatedSessions))}</div>
+        <div className="d">
+          {t('kpi.sessions.detail', {
+            total: coverage.sessionsTotal,
+            main: coverage.usageSessionsMain,
+            subagent: coverage.usageSessionsSubagent,
+          })}
+        </div>
       </div>
       <div className="dsw-ust-kpi">
         <div className="l">{t('kpi.topModel')}</div>

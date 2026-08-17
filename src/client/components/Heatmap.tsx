@@ -50,6 +50,9 @@ export function Heatmap({ days, i18n, onTip }: HeatmapProps): JSX.Element {
         <div
           key={key}
           className={'dsw-ust-heat-cell dsw-ust-h' + level}
+          // Left-to-right entrance wipe: delay scales with the week column so
+          // columns light up sequentially (~0.018s/week, 0.45s fade each).
+          style={{ animationDelay: (w * 0.018).toFixed(4) + 's' }}
           onMouseEnter={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
             onTip({

@@ -10,9 +10,9 @@ export function wrapClient(inputPath, outputPath) {
   const wrapped = `// dsh-usage-panel · Client bundle (web plugin \`./client\` export)
 // Built from src/client via esbuild + scripts/wrap-client.mjs. Registers the
 // settings page "消耗统计 / Usage" (settings.section) with KPI cards, activity
-// heatmap, stacked daily bars, model donut, session ranking, coverage
-// diagnostics, provider breakdown and CSV/JSON export. Data arrives over the
-// package's own RPC channel /usage-stats (loopback authority).
+// heatmap, stacked daily bars, model donut, session ranking, provider
+// breakdown and CSV/JSON export. Data arrives over the package's own RPC
+// channel /usage-stats (loopback authority).
 window.__ModuleLoader__.load({
   id: 'dsh-usage-panel',
   factory: function (require) {

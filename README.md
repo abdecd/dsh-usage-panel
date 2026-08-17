@@ -12,9 +12,8 @@ Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 ## What it shows
 
-- **Cumulative totals (all time)** — billed input / output tokens, session count, and the most-used model with its share.
+- **Cumulative totals (all time)** — billed input / output tokens, session count (with the grand total of session records and the main/subagent usage split beneath it), and the most-used model with its share.
 - **Cache hit rate** — `cache read ÷ (uncached input + cache read + cache write)`, with the read/write magnitudes.
-- **Coverage diagnostics** — sessions scanned / failed / pending, data path (`incremental projection` or `full rescan`), event range, retries and compaction tokens. Partial results are labeled as partial — never a silent "complete bill".
 - **Activity heatmap** — the last six months in a GitHub-contribution layout (weeks as columns, weekdays as rows). Days are colored by quartile over non-zero usage.
 - **Daily stacked bars** — per-model token usage, switchable between the last 7, 14, or 30 days.
 - **Top sessions** — the 10 most token-hungry sessions with their folded titles.
@@ -60,7 +59,7 @@ Accounting rules: `request/header` and `request/context` events record the model
 
 **Fork dedup**: events that precede the last `session/end-seed` marker (fork/resume/replay seed history) are never counted, so forked sessions do not double-bill their parents' usage.
 
-**Timezone declaration**: day buckets and exports use **UTC** calendar days (`YYYY-MM-DD`). The coverage card states the scope ("local session logs only, UTC").
+**Timezone declaration**: day buckets and exports use **UTC** calendar days (`YYYY-MM-DD`); the panel declares this scope ("local session logs only, UTC").
 
 Because nothing is written back, statistics survive restarts and cover sessions from before the plugin was installed.
 
