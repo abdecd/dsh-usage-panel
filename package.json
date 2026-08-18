@@ -72,12 +72,14 @@
     "url": "git+https://github.com/AlfredChaos/dsh-usage-panel.git"
   },
   "keywords": [
+    "deepseek",
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
-    "usage",
-    "tokens",
-    "statistics"
+    "token-usage",
+    "agent-analytics",
+    "typescript",
+    "usage-statistics"
   ],
   "engines": {
     "node": ">=20"
