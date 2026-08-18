@@ -16,16 +16,16 @@ Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 - **Cache hit rate** — `cache read ÷ (uncached input + cache read + cache write)`, with the read/write magnitudes.
 - **Activity heatmap** — the last six months in a GitHub-contribution layout (weeks as columns, weekdays as rows). Days are colored by quartile over non-zero usage.
 - **Daily stacked bars** — per-model token usage, switchable between the last 7, 14, or 30 days.
-- **Top sessions** — the 10 most token-hungry sessions with their folded titles.
-- **Providers** — per-provider totals (shown when more than one provider route is in use).
-- **Model donut** — all-time share per model, with the top 5 listed beside it and the rest folded into "other".
+- **Top sessions** — the 10 most token-hungry sessions with their folded titles, each tagged **main** or **subagent** by delegation depth.
+- **Providers** — per-provider token totals as horizontal bars (shown when more than one provider route is in use).
+- **Model donut** — all-time share per model, with the top 5 listed beside it; each row carries a per-model **cache hit rate** column, color-coded to its segment.
 - **Export** — full JSON, daily CSV and per-model CSV (formula-injection guarded, RFC 4180, UTF-8 BOM).
 
-Hovering a bar or a donut segment shows the exact breakdown:
+Hovering a bar, heatmap cell, or donut segment shows the exact breakdown:
 
-| Bar tooltip | Donut tooltip | Overview |
+| Bar tooltip | Overview (KPI + heatmap) | Sessions & providers |
 | --- | --- | --- |
-| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="Donut hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI cards and heatmap overview" /> |
+| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI cards and heatmap overview" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-sessions.png" width="200" alt="Session ranking and provider breakdown" /> |
 
 ## Install
 

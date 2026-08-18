@@ -16,16 +16,16 @@
 - **缓存命中率** —— `缓存读 ÷（未缓存输入 + 缓存读 + 缓存写）`，附读写绝对量。
 - **活跃热力图** —— 最近半年，GitHub 贡献图式布局（列为周、行为星期）。按非零日用量的四分位分 4 级色阶。
 - **每日柱状图** —— 按模型堆叠的每日用量，可切换最近 7 / 14 / 30 天。
-- **会话用量排行** —— 最耗 Token 的 10 个会话（含折叠标题）。
-- **Provider 用量** —— 多 Provider 时按路由展示各自用量。
-- **模型环形图** —— 各模型全历史占比，旁边列出前 5 名，其余合并为「其他」。
+- **会话用量排行** —— 最耗 Token 的 10 个会话（含折叠标题），每行按委派深度标注**主会话**或**子代理**。
+- **服务商用量** —— 多 Provider 时以横向条形按路由展示各自 Token 消耗。
+- **模型环形图** —— 各模型全历史占比，旁边列出前 5 名；每行带**缓存命中率**列，颜色与对应分段一致。
 - **导出** —— 完整 JSON、每日 CSV、模型 CSV（防公式注入、RFC 4180、UTF-8 BOM）。
 
-悬停柱子或环形图分段可以看到具体明细：
+悬停柱子、热力图格子或环形图分段可以看到具体明细：
 
-| 柱状图悬停 | 环形图悬停 | 概览 |
+| 柱状图悬停 | 概览（KPI + 热力图） | 会话排行与服务商 |
 | --- | --- | --- |
-| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="环形图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI 卡片与热力图概览" /> |
+| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI 卡片与热力图概览" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-sessions.png" width="200" alt="会话用量排行与服务商用量" /> |
 
 ## 安装
 
