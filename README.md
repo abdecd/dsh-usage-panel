@@ -6,7 +6,7 @@ Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 [简体中文](README.zh-CN.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Mentioned in Awesome DeepSeek Harness](https://awesome.re/mentioned-badge.svg)](https://github.com/0xsline/awesome-deepseek-harness)
 
-<img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/demo.gif" width="620" alt="dsh-usage-panel usage demo: loading, animated statistics, hover tooltips and range switching" />
+<img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/demo.gif" width="620" alt="dsh-usage-panel v0.2 demo: loading, KPI count-up, heatmap entrance wipe, hover tooltips and range switching" />
 
 </div>
 
@@ -23,9 +23,9 @@ Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 Hovering a bar or a donut segment shows the exact breakdown:
 
-| Bar tooltip | Donut tooltip | Dark theme |
+| Bar tooltip | Donut tooltip | Overview |
 | --- | --- | --- |
-| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="Donut hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-dark.png" width="200" alt="Dark theme" /> |
+| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="Donut hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI cards and heatmap overview" /> |
 
 ## Install
 
@@ -59,7 +59,7 @@ Accounting rules: `request/header` and `request/context` events record the model
 
 **Fork dedup**: events that precede the last `session/end-seed` marker (fork/resume/replay seed history) are never counted, so forked sessions do not double-bill their parents' usage.
 
-**Timezone declaration**: day buckets and exports use **UTC** calendar days (`YYYY-MM-DD`); the panel declares this scope ("local session logs only, UTC").
+**Timezone declaration**: day buckets and exports use **UTC** calendar days (`YYYY-MM-DD`); the heatmap subtitle declares the scope ("last 6 months · UTC").
 
 Because nothing is written back, statistics survive restarts and cover sessions from before the plugin was installed.
 
@@ -84,7 +84,7 @@ Source is TypeScript (strict) in `src/`, built with esbuild; the `lib/` outputs 
 | `src/shared/contract.ts` | Host↔client wire contract (single source of truth) |
 | `cordis.patch.yml` | Bundle patch: inserts the `usage-stats` row into the profile composition |
 
-The host serves an `overview` endpoint through `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })`; the browser calls it via `rpc.call('/usage-stats', 'overview', …)`. The overview carries `coverage` (sessions scanned/failed/pending, mode, UTC declaration, event range), `topSessions`, `providers`, plus the v0.1.0-shaped `days` / `totals` / `byModel` / `allTime`. Developed against DeepSeek Harness `0.1.0-rc.6`. Tests run on the Node built-in test runner (`npm test`); CI runs typecheck + build + test + the pack gate.
+The host serves an `overview` endpoint through `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })`; the browser calls it via `rpc.call('/usage-stats', 'overview', …)`. The overview carries `coverage` (session-record totals and the main/subagent usage split, shown beneath the sessions KPI), `topSessions`, `providers`, plus the v0.1.0-shaped `days` / `totals` / `byModel` / `allTime`. Developed against DeepSeek Harness `0.1.0-rc.6`. Tests run on the Node built-in test runner (`npm test`); CI runs typecheck + build + test + the pack gate.
 
 ## License
 

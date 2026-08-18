@@ -6,7 +6,7 @@
 
 [English](README.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Mentioned in Awesome DeepSeek Harness](https://awesome.re/mentioned-badge.svg)](https://github.com/0xsline/awesome-deepseek-harness)
 
-<img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/demo.gif" width="620" alt="dsh-usage-panel 使用演示：加载、统计动画、悬停明细与时间范围切换" />
+<img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/demo.gif" width="620" alt="dsh-usage-panel v0.2 使用演示：加载、KPI 动画、热力图入场、悬停明细与时间范围切换" />
 
 </div>
 
@@ -23,9 +23,9 @@
 
 悬停柱子或环形图分段可以看到具体明细：
 
-| 柱状图悬停 | 环形图悬停 | 暗色主题 |
+| 柱状图悬停 | 环形图悬停 | 概览 |
 | --- | --- | --- |
-| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="环形图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-dark.png" width="200" alt="暗色主题" /> |
+| <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-donut.png" width="200" alt="环形图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI 卡片与热力图概览" /> |
 
 ## 安装
 
@@ -59,7 +59,7 @@ Host 半聚合持久化会话日志：
 
 **子会话（fork）去重**：最后一个 `session/end-seed` 标记之前的事件（fork / resume / replay 种子历史）一律不计数，fork 出的会话不会重复计算父会话的用量。
 
-**日期口径声明**：日桶与导出均按 **UTC** 自然日（`YYYY-MM-DD`）。面板明确标注范围（"仅本机会话日志 · UTC"）。
+**日期口径声明**：日桶与导出均按 **UTC** 自然日（`YYYY-MM-DD`）。热力图副标题明确标注口径（"最近半年 · UTC"）。
 
 因为不写回任何数据，统计在重启后依然存在，也能覆盖插件安装之前的历史会话。
 
@@ -84,7 +84,7 @@ Host 半聚合持久化会话日志：
 | `src/shared/contract.ts` | host↔client wire 契约（单一来源） |
 | `cordis.patch.yml` | Bundle patch：向 profile 组合插入 `usage-stats` 行 |
 
-Host 通过 `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })` 提供 `overview` 端点，浏览器经 `rpc.call('/usage-stats', 'overview', …)` 调用。overview 载荷新增 `coverage`（会话成功/失败/待落盘、数据路径、UTC 声明、事件范围）、`topSessions`、`providers`，并保留 v0.1.0 形态的 `days` / `totals` / `byModel` / `allTime`。基于 DeepSeek Harness `0.1.0-rc.6` 开发验证。测试使用 Node 内置 test runner（`npm test`）；CI 执行 typecheck + build + test + 打包门禁。
+Host 通过 `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })` 提供 `overview` 端点，浏览器经 `rpc.call('/usage-stats', 'overview', …)` 调用。overview 载荷包含 `coverage`（总会话数与主/子代理用量拆分，展示于会话数量 KPI 次级文字）、`topSessions`、`providers`，并保留 v0.1.0 形态的 `days` / `totals` / `byModel` / `allTime`。基于 DeepSeek Harness `0.1.0-rc.6` 开发验证。测试使用 Node 内置 test runner（`npm test`）；CI 执行 typecheck + build + test + 打包门禁。
 
 ## License
 
