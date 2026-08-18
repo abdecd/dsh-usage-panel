@@ -93,6 +93,7 @@ npm pack --dry-run   # 发布前人工确认清单
 - **`node --test` 传目录不识别**：必须传 glob `'tests-dist/**/*.test.js'`（spawnSync 里字符串 glob 由 Node 展开）。
 - **`createElement(ClassComp, props, children)` 类型报错时**：把 `children` 声明为可选即可（BoundaryProps）。
 - **NODE_AUTH_TOKEN 与 OIDC provenance 互斥**：publish.yml 不设 token，npm 走 OIDC。
+- **OIDC Trusted Publishing 必须在 npmjs.com 手动链接 trusted publisher，否则 `npm publish --provenance` 的 PUT 返 404**（真实事故：v0.2.0 tag 推送触发 publish.yml，provenance 签名成功但随后的 `PUT https://registry.npmjs.org/dsh-usage-panel` 报 `404 Not Found — 'is not in this registry'`）。前置条件（manual, once，写在 publish.yml 顶部注释里）：npmjs.com → 包页 → Settings/Publish access → 添加 Trusted Publisher（GitHub Actions，repo=`AlfredChaos/dsh-usage-panel`，workflow=`publish.yml`，environment 留空）。v0.1.0 当时是用 access token 手动发的，OIDC 链接从未真正配过 —— 所以 publish.yml 一直是「绿本地、红 CI」的隐式失效状态，直到 v0.2.0 首次走它才暴露。临时绕过：本地 `npm publish --access public`（**不带 `--provenance`**，provenance 溯源只能在 GitHub Actions 环境生成），但这是偏离 OIDC 架构的一次性手段，且 tarball 不带 provenance。根因修复只能去 npmjs.com 配 trusted publisher。
 
 ## 7. 文档同步义务
 
