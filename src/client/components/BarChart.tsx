@@ -1,7 +1,6 @@
 // dsh-usage-panel · stacked daily bar chart (v0.1.0 port, UTC dates).
-// Default 7 days; per-model colors; hover tooltip with per-model breakdown;
-// 7/14/30 range switching; count-up-free (CSS grow animation preserved).
-import { useState } from 'react'
+// Per-model colors; hover tooltip with per-model breakdown. The visible window
+// is driven by the orchestrator's global range (days arrive pre-sliced).
 import type { DayRecord, ModelItem } from '../../shared/contract.ts'
 import { fmtCompact, fmtTokens, niceCeil, dateLabel, dateCN } from '../../shared/format.ts'
 import type { I18n } from '../locales.ts'
@@ -19,7 +18,6 @@ interface BarChartProps {
 export function BarChart({ days, byModel, i18n, onTip }: BarChartProps): JSX.Element {
   const t = i18n.t
   const locale = i18n.locale
-  const [range, setRange] = useState(7)
   const rows = modelRows(byModel, t('donut.other'))
   const topNames: Record<string, boolean> = {}
   for (let i = 0; i < byModel.length && i < 5; i++) topNames[byModel[i]!.model] = true
@@ -28,7 +26,7 @@ export function BarChart({ days, byModel, i18n, onTip }: BarChartProps): JSX.Ele
     for (const name of Object.keys(d.models)) if (!topNames[name]) s += d.models[name]!.total
     return s
   }
-  const rangeDays = days.slice(-range)
+  const rangeDays = days
   const yMax = niceCeil(Math.max.apply(null, rangeDays.map((d) => d.total).concat(1)))
   const W = 720
   const H = 230
@@ -139,13 +137,6 @@ export function BarChart({ days, byModel, i18n, onTip }: BarChartProps): JSX.Ele
         <div className="dsw-ust-card-title">
           <h3>{t('bar.title')}</h3>
           <span className="dsw-ust-card-sub">{t('bar.sub')}</span>
-        </div>
-        <div className="dsw-ust-range">
-          {[7, 14, 30].map((r) => (
-            <button key={r} className={range === r ? 'on' : ''} onClick={() => setRange(r)}>
-              {r + 'd'}
-            </button>
-          ))}
         </div>
       </div>
       <svg viewBox="0 0 720 230" className="dsw-ust-chart" preserveAspectRatio="xMidYMid meet">

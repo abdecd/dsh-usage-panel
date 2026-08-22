@@ -1,6 +1,22 @@
 import type { Buckets, DayRecord, ModelItem, UsageTotals } from './contract.ts';
 export declare const HEAT_DAYS = 182;
 export declare const RECENT_DAYS = 30;
+export declare const WEEK_DAYS = 7;
+/** A windowed roll-up derived client-side from the per-day records. */
+export interface WindowSummary {
+    totals: UsageTotals;
+    byModel: ModelItem[];
+}
+/** A windowed roll-up plus the host-counted distinct sessions for the window. */
+export interface RangeSummary extends WindowSummary {
+    sessionCount: number;
+}
+/**
+ * Sum the last `nDays` day records into a windowed totals + per-model ranking.
+ * Pure: `days` is the fixed-length heatmap window, so `nDays` must be ≤ the
+ * array length (callers pass WEEK_DAYS / RECENT_DAYS, both ≤ HEAT_DAYS).
+ */
+export declare function windowFromDays(days: DayRecord[], nDays: number): WindowSummary;
 export declare function emptyBuckets(): Buckets;
 export declare function emptyTotals(): UsageTotals;
 /** Add a raw (possibly partial/null) TokenUsage-like value into a bucket set. */

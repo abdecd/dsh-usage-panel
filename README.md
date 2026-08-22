@@ -12,13 +12,14 @@ Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 ## What it shows
 
-- **Cumulative totals (all time)** — billed input / output tokens, session count (with the grand total of session records and the main/subagent usage split beneath it), and the most-used model with its share.
-- **Cache hit rate** — `cache read ÷ (uncached input + cache read + cache write)`, with the read/write magnitudes.
-- **Activity heatmap** — the last six months in a GitHub-contribution layout (weeks as columns, weekdays as rows). Days are colored by quartile over non-zero usage.
-- **Daily stacked bars** — per-model token usage, switchable between the last 7, 14, or 30 days.
-- **Top sessions** — the 10 most token-hungry sessions with their folded titles, each tagged **main** or **subagent** by delegation depth.
-- **Providers** — per-provider token totals as horizontal bars (shown when more than one provider route is in use).
-- **Model donut** — all-time share per model, with the top 5 listed beside it; each row carries a per-model **cache hit rate** column, color-coded to its segment.
+- **Range capsule** — a `7 days / 30 days / All` segmented picker under the title (default 30 days). The **summary cards, daily stacked bars, model donut, and providers** recompute for the selected range; the activity heatmap (fixed to the last half-year) and top sessions stay all-time.
+- **Summary cards (per range)** — billed input / output tokens, session count (with the grand total of session records and the main/subagent usage split beneath it), and the most-used model with its share.
+- **Cache hit rate** — `cache read ÷ (uncached input + cache read + cache write)`, with the read/write magnitudes (per range).
+- **Activity heatmap** — the last six months in a GitHub-contribution layout (weeks as columns, weekdays as rows). Days are colored by quartile over non-zero usage (fixed to the last half-year, not range-driven).
+- **Daily stacked bars** — per-model token usage for the number of days covered by the selected range.
+- **Top sessions** — the 10 most token-hungry sessions with their folded titles, each tagged **main** or **subagent** by delegation depth (all time).
+- **Providers** — per-provider token totals as horizontal bars (shown when more than one provider route is in use; follows the selected range).
+- **Model donut** — share per model within the current range, with the top 5 listed beside it; each row carries a per-model **cache hit rate** column, color-coded to its segment.
 - **Export** — full JSON, daily CSV and per-model CSV (formula-injection guarded, RFC 4180, UTF-8 BOM).
 
 Hovering a bar, heatmap cell, or donut segment shows the exact breakdown:
@@ -57,7 +58,7 @@ The host half aggregates persisted session logs:
 
 Accounting rules: `request/header` and `request/context` events record the model (context base, header override); the step's `assistant/message` usage replaces streamed provisional usage (a retried same-step message never double-counts); `llm/retry` events are counted as retries, not tokens; `compaction/summary` usage is attributed to its own model and reported separately; reasoning tokens are already inside output and are never added again.
 
-**Fork dedup**: events that precede the last `session/end-seed` marker (fork/resume/replay seed history) are never counted, so forked sessions do not double-bill their parents' usage.
+**Fork dedup**: events that precede the FIRST `session/end-seed` marker (the fork's constructor seed; `header.seedLength` when present) are never counted, so forked sessions do not double-bill their parents' usage. DSH appends a new marker each time a session is re-opened after a restart (a lifecycle re-seed); those later markers do **not** move the boundary, so a long-lived conversation keeps its full token history across restarts and compactions.
 
 **Timezone declaration**: day buckets and exports use **UTC** calendar days (`YYYY-MM-DD`); the heatmap subtitle declares the scope ("last 6 months · UTC").
 
@@ -84,7 +85,7 @@ Source is TypeScript (strict) in `src/`, built with esbuild; the `lib/` outputs 
 | `src/shared/contract.ts` | Host↔client wire contract (single source of truth) |
 | `cordis.patch.yml` | Bundle patch: inserts the `usage-stats` row into the profile composition |
 
-The host serves an `overview` endpoint through `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })`; the browser calls it via `rpc.call('/usage-stats', 'overview', …)`. The overview carries `coverage` (session-record totals and the main/subagent usage split, shown beneath the sessions KPI), `topSessions`, `providers`, plus the v0.1.0-shaped `days` / `totals` / `byModel` / `allTime`. Developed against DeepSeek Harness `0.1.0-rc.6`. Tests run on the Node built-in test runner (`npm test`); CI runs typecheck + build + test + the pack gate.
+The host serves an `overview` endpoint through `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })`; the browser calls it via `rpc.call('/usage-stats', 'overview', …)`. The overview carries `coverage` (session-record totals and the main/subagent usage split, shown beneath the sessions KPI), `topSessions`, `providers`, per-window session counts (`sessionCount` = last-30-days, `weekSessionCount` = last-7-days); providers are likewise windowed (`providers` = last-30-days, `week.providers` = last-7-days, `allTime.providers` = all-time) while `topSessions` stays all-time; plus the v0.1.0-shaped `days` / `totals` / `byModel` / `allTime` (the 7/30-day amounts and per-model split are rolled from `days` on the client; `All` uses `allTime`). Developed against DeepSeek Harness `0.1.0-rc.6`. Tests run on the Node built-in test runner (`npm test`); CI runs typecheck + build + test + the pack gate.
 
 ## License
 

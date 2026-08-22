@@ -58,8 +58,12 @@ export function isUsable(value: unknown): value is CachedOverview {
   const totals = payload.totals as Record<string, unknown> | undefined
   if (!totals || typeof totals.input !== 'number' || typeof totals.total !== 'number') return false
   if (!Array.isArray(payload.days) || !Array.isArray(payload.byModel)) return false
+  if (typeof payload.sessionCount !== 'number' || typeof payload.weekSessionCount !== 'number') return false
   const allTime = payload.allTime as Record<string, unknown> | undefined
   if (!allTime || typeof allTime.sessionCount !== 'number') return false
+  if (!Array.isArray(allTime.providers)) return false
+  const week = payload.week as Record<string, unknown> | undefined
+  if (!week || !Array.isArray(week.providers)) return false
   const coverage = payload.coverage as Record<string, unknown> | undefined
   if (!coverage || typeof coverage.sessionsTotal !== 'number') return false
   if (typeof coverage.usageSessionsMain !== 'number' || typeof coverage.usageSessionsSubagent !== 'number') return false

@@ -83,7 +83,7 @@ npm pack --dry-run   # 发布前人工确认清单
 - **locale 运行时的 `translate` 找不到键时"fail loud"返回键本身**：`translated(key) || 本地词典` 这类兜底会被"键本身"这个真值绕过，必须显式 `text === key` 判失败再走本地词典；且 `translated` 调用不要传 params（插值统一由我们做）。
 - **`i18n.locale` 必须是 getter**：字段快照在语言切换后保持旧值，格式化函数会一直用初始语言。
 - **`ctx.on('locale/change', …)` 直接挂在 ctx 上**（cordis Context 就是 EventEmitter，没有 `ctx.events`）；更稳的是挂 `locale.subscribe(update)`（切换与迟到词典注册都会 bump revision）。
-- **投影注册表的冷折叠是单趟**：`buildCell` = `init()` + 逐事件 `apply()`，无回看。种子边界因此用"武装"语义：看到最后一个 `session/end-seed` 之前**一律不计数**；`foldEvents`（自控路径）必须先预扫最后一个标记再折叠；`session/end-seed` 分支必须"last marker wins"（`seq <= seedEnd` 时保持原值），否则预置的 seedEnd 会被更早的标记覆盖。
+- **投影注册表的冷折叠是单趟**：`buildCell` = `init()` + 逐事件 `apply()`，无回看。种子边界因此用"武装"语义：看到**第一个** `session/end-seed` 之前**一律不计数**；`session/end-seed` 分支必须"first marker wins"（`seedEnd !== null` 即保持原值）——后续标记是 dsh 重启/重放追加的**重种子**边界，前移即静默丢本会话自己的历史（事故见 §6.5）；`foldEvents`/scan 路径必须先预扫**第一个**标记（scan 有 `header.seedLength` 时以它为准——它才是持久的 fork 血缘值）再折叠；整份日志无任何标记 ⇒ 从未 fork ⇒ 从 seq 0 计数（v0.1.0 语义）。注意 dsh `firstLiveSeq` 文档说的"locate the LAST end-seed"是**本进程发布**边界，不是计费边界，勿混用。
 - **`mergeSessionValue` 是纯函数**：返回值必须重新赋值（`a = mergeSessionValue(a, …)`），漏掉会静默丢数据——scan.ts 与 index.ts 都踩过。
 - **zod v4 的 `z.record` 签名变了**：`z.record(valueSchema)` 在 v4 里被当作 key schema；必须 `z.record(z.string(), valueSchema)`。
 - **`SessionId` 是品牌类型**：`readSession/readTitle/coldSnapshot` 拒绝裸 `string`；用 `header.id` 本体，别 `String()`。
@@ -94,6 +94,13 @@ npm pack --dry-run   # 发布前人工确认清单
 - **`createElement(ClassComp, props, children)` 类型报错时**：把 `children` 声明为可选即可（BoundaryProps）。
 - **NODE_AUTH_TOKEN 与 OIDC provenance 互斥**：publish.yml 不设 token，npm 走 OIDC。
 - **OIDC Trusted Publishing 必须在 npmjs.com 手动链接 trusted publisher，否则 `npm publish --provenance` 的 PUT 返 404**（真实事故：v0.2.0 tag 推送触发 publish.yml，provenance 签名成功但随后的 `PUT https://registry.npmjs.org/dsh-usage-panel` 报 `404 Not Found — 'is not in this registry'`）。前置条件（manual, once，写在 publish.yml 顶部注释里）：npmjs.com → 包页 → Settings/Publish access → 添加 Trusted Publisher（GitHub Actions，repo=`AlfredChaos/dsh-usage-panel`，workflow=`publish.yml`，environment 留空）。v0.1.0 当时是用 access token 手动发的，OIDC 链接从未真正配过 —— 所以 publish.yml 一直是「绿本地、红 CI」的隐式失效状态，直到 v0.2.0 首次走它才暴露。临时绕过：本地 `npm publish --access public`（**不带 `--provenance`**，provenance 溯源只能在 GitHub Actions 环境生成），但这是偏离 OIDC 架构的一次性手段，且 tarball 不带 provenance。根因修复只能去 npmjs.com 配 trusted publisher。
+
+### 6.5 v0.2.0 事故：last-marker 种子边界在 dsh 重启后丢历史（已修，stateVersion 2→3）
+
+- **现象**：单个长对话反复压缩，dsh 重启后「消耗统计」只剩最新上下文窗口的用量，重启前的全部用量丢失。
+- **根因**：dsh `dsh-session` 的 `Session` 构造器对每次 re-seed（**重启重开**即其一：constructor seed = 全量已存日志）都会在已存日志**尾部追加一个新的 `session/end-seed`**（尾已带标记则不重复）。重启 N 次的长对话日志里因此有 N+1 个标记，而**所有前缀都是本会话自己已计费的历史**。面板的"last marker wins"边界（`foldEvents`/scan 预扫 + reducer 分支）把最后一个标记之前的一切当成不可计数的种子历史 → 重启后只剩最后一段。
+- **修复**：边界 = **第一个** `session/end-seed`（构造种子/fork 边界），后续重种子标记不移动边界（`first marker wins`）；scan 路径优先 `header.seedLength`（持久 fork 血缘值；0 = 从未 fork = 全量计数，含重种子标记之间的前缀），无 seedLength 的旧 header 才回退第一个标记；新增纯函数 `seedBoundaryOf` 统一两路边界。`PROJECTION_STATE_VERSION` 2→3：v2 checkpoint 可能携带旧规则算出的**偏低**总量，必须整行丢弃重折、不可前向套用。
+- **剩余边缘**：投影 unit 只看得到事件、看不到 header——单趟折叠里"标记一直不出现"就无法武装（无标记的全新会话在投影模式计 0，直到第一次重启留下标记；scan 路径经 `seedLength=0` 全量计数，正确）；且无法区分"无头标记的 fork 日志"与"无头标记的重种子日志"，first-marker 语义对后者少计。真实宿主日志带头标记（空种子创建），两路均完全正确；fork 日志必留标记，去重红线不受影响。
 
 ## 7. 文档同步义务
 

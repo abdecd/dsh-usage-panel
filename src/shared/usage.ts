@@ -5,6 +5,45 @@ import type { Buckets, DayRecord, ModelItem, UsageTotals } from './contract.ts'
 
 export const HEAT_DAYS = 182 // ~26 weeks for the contribution heatmap (recent half-year)
 export const RECENT_DAYS = 30 // recent window for totals / model split / bars
+export const WEEK_DAYS = 7 // short window for the KPI / chart range switch
+
+/** A windowed roll-up derived client-side from the per-day records. */
+export interface WindowSummary {
+  totals: UsageTotals
+  byModel: ModelItem[]
+}
+
+/** A windowed roll-up plus the host-counted distinct sessions for the window. */
+export interface RangeSummary extends WindowSummary {
+  sessionCount: number
+}
+
+/**
+ * Sum the last `nDays` day records into a windowed totals + per-model ranking.
+ * Pure: `days` is the fixed-length heatmap window, so `nDays` must be ≤ the
+ * array length (callers pass WEEK_DAYS / RECENT_DAYS, both ≤ HEAT_DAYS).
+ */
+export function windowFromDays(days: DayRecord[], nDays: number): WindowSummary {
+  const slice = days.slice(-nDays)
+  const byModel: Record<string, Buckets> = {}
+  const totals = emptyTotals()
+  for (const day of slice) {
+    for (const model of Object.keys(day.models)) {
+      const m = day.models[model]!
+      const b = byModel[model] || (byModel[model] = emptyBuckets())
+      b.input += m.input
+      b.output += m.output
+      b.cacheRead += m.cacheRead
+      b.cacheWrite += m.cacheWrite
+      totals.input += m.input
+      totals.output += m.output
+      totals.cacheRead += m.cacheRead
+      totals.cacheWrite += m.cacheWrite
+    }
+  }
+  totals.total = totals.input + totals.output + totals.cacheRead + totals.cacheWrite
+  return { totals, byModel: sortedModels(byModel) }
+}
 
 export function emptyBuckets(): Buckets {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }

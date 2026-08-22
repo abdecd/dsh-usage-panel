@@ -104,21 +104,31 @@ export interface Overview {
   totals: UsageTotals
   /** Distinct sessions with usage in the recent-30d window (v0.1.0 semantic). */
   sessionCount: number
+  /** Distinct sessions with usage in the recent-7d window (range switch). */
+  weekSessionCount: number
   /** Recent-30d per-model ranking, sorted by total desc (v0.1.0 semantic). */
   byModel: ModelItem[]
+  /** Recent-30d provider routes (range-scoped), by total desc. */
+  providers: ProviderItem[]
+  /** Recent-7d window. Totals/byModel are derived client-side from `days` and
+   *  the session count is `weekSessionCount`; only providers are carried here. */
+  week: {
+    providers: ProviderItem[]
+  }
   allTime: {
     totals: UsageTotals
     sessionCount: number
     byModel: ModelItem[]
+    /** All-time provider routes (range-scoped), by total desc. */
+    providers: ProviderItem[]
   }
   coverage: CoverageStats
-  /** Top-N sessions by all-time total, with folded titles. */
+  /** Top-N sessions by ALL-TIME total with folded titles. Deliberately NOT
+   *  range-scoped — the 会话排行 card always shows the lifetime leaders. */
   topSessions: SessionSummary[]
-  /** Provider routes seen in the logs (plus configured routes), by total desc. */
-  providers: ProviderItem[]
   updatedAt: number
   /** Set when the payload came from a stale cache while a rescan runs. */
   stale?: boolean
 }
 
-export const OVERVIEW_VERSION = 3
+export const OVERVIEW_VERSION = 5

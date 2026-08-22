@@ -16,12 +16,12 @@ function usage(input = 0, output = 0, cacheRead = 0, cacheWrite = 0) {
   return { inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite }
 }
 
-function sessionLog(days: Array<{ month?: number; day: number; input: number; model?: string }>): SessionEvent[] {
+function sessionLog(days: Array<{ month?: number; day: number; input: number; model?: string; provider?: string }>): SessionEvent[] {
   const events: SessionEvent[] = [ev('session/end-seed', 1, 0, {})]
   let seq = 2
-  for (const { month, day, input, model } of days) {
+  for (const { month, day, input, model, provider } of days) {
     const t = Date.UTC(2026, month ?? 7, day, 12, 0, 0)
-    events.push(ev('request/context', seq++, t, { provider: 'p1', model: model || 'm1' }))
+    events.push(ev('request/context', seq++, t, { provider: provider || 'p1', model: model || 'm1' }))
     events.push(ev('assistant/message', seq++, t, { turn: 1, step: seq, usage: usage(input, input / 2) }))
     events.push(ev('step/end', seq++, t, { turn: 1, step: seq - 1 }))
   }
@@ -42,6 +42,7 @@ test('mergeSessionValue aggregates totals, sessions and providers across session
   assert.equal(a.allTimeTotals.input, 1150)
   assert.equal(a.recentTotals.input, 150) // 08-14 + 08-15 only (30-day window)
   assert.equal(a.recentSessionCount, 2)
+  assert.equal(a.weekSessionCount, 2) // both 08-14 + 08-15 fall in the 7-day window
   assert.equal(a.allTimeSessionCount, 2)
   assert.equal(a.allTimeByModel['m1']?.input, 1100)
   assert.equal(a.allTimeByModel['m2']?.input, 50)
@@ -50,6 +51,17 @@ test('mergeSessionValue aggregates totals, sessions and providers across session
   assert.equal(a.usageSessionsSubagent, 1) // sess-b is depth 1
   assert.equal(a.from, Date.UTC(2026, 6, 1, 12, 0, 0))
   assert.equal(a.to, Date.UTC(2026, 7, 15, 12, 0, 0))
+})
+
+test('weekSessionCount only counts sessions with usage in the 7-day window', () => {
+  // NOW = 2026-08-15. 7-day cutoff day key = 2026-08-08; 30-day cutoff = 2026-07-16.
+  let a = emptyAggregate()
+  a = mergeSessionValue(a, foldEvents(sessionLog([{ day: 14, input: 10 }])), 'in-week', NOW, 0)
+  a = mergeSessionValue(a, foldEvents(sessionLog([{ day: 1, input: 20 }])), 'in-month-not-week', NOW, 0)
+  a = mergeSessionValue(a, foldEvents(sessionLog([{ month: 6, day: 1, input: 30 }])), 'ancient', NOW, 0)
+  assert.equal(a.allTimeSessionCount, 3)
+  assert.equal(a.recentSessionCount, 2) // 08-14 + 08-01 (both within 30d)
+  assert.equal(a.weekSessionCount, 1) // only 08-14 within the 7d window
 })
 
 test('rankSessions orders by all-time total and honors the limit', () => {
@@ -107,7 +119,37 @@ test('finalizeOverview builds the wire payload with coverage, titles and provide
   assert.equal(overview.topSessions[1]!.title, null)
   assert.equal(overview.providers.length, 1)
   assert.equal(overview.providers[0]!.name, 'DeepSeek')
+  assert.equal(overview.providers[0]!.totals.input, 150) // recent-30d: both sessions
+  assert.equal(overview.week.providers.length, 1) // 08-14 + 08-15 are within the 7d window too
+  assert.equal(overview.week.providers[0]!.totals.input, 150)
+  assert.equal(overview.allTime.providers.length, 1)
+  assert.equal(overview.allTime.providers[0]!.totals.input, 150)
   assert.equal(overview.updatedAt, NOW)
+})
+
+test('finalizeOverview window-splits providers: 7d vs 30d vs all-time', () => {
+  let a = emptyAggregate()
+  // Old: 100 input on 08-01 (inside 30d, outside 7d), provider pA.
+  a = mergeSessionValue(a, foldEvents(sessionLog([{ day: 1, input: 100, provider: 'pA' }])), 'sess-old', NOW, 0)
+  // Recent: 40 input on 08-14 (inside both), provider pB.
+  a = mergeSessionValue(a, foldEvents(sessionLog([{ day: 14, input: 40, provider: 'pB' }])), 'sess-new', NOW, 1)
+  const overview = finalizeOverview({
+    aggregate: a,
+    now: NOW,
+    mode: 'projection',
+    sessionsTotal: 2,
+    sessionsOk: 2,
+    sessionsFailed: 0,
+    sessionsPending: 0,
+    eventsCounted: 0,
+    titles: new Map(),
+    providerNames: { pA: 'Old', pB: 'New' },
+  })
+  const names = (rows: Array<{ name: string }>) => rows.map((r) => r.name)
+  // 30d sees both providers; 7d sees only pB; all-time sees both.
+  assert.deepEqual(names(overview.providers), ['Old', 'New'])
+  assert.deepEqual(names(overview.week.providers), ['New'])
+  assert.deepEqual(names(overview.allTime.providers), ['Old', 'New'])
 })
 
 test('finalizeOverview on an empty aggregate yields a zero overview (mode none)', () => {

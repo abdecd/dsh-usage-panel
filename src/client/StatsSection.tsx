@@ -3,9 +3,10 @@
 // (refresh failed, cached payload kept with last success timestamp) / error.
 // localStorage SWR cache makes a refresh render instantly (P1-⑨); the header
 // keeps the v0.1.0 refresh button and gains the export menu (P1-⑧).
-import { useCallback, useEffect, useState } from 'react'
-import type { Overview } from '../shared/contract.ts'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { Overview, ProviderItem } from '../shared/contract.ts'
 import { formatClock } from '../shared/format.ts'
+import { RECENT_DAYS, WEEK_DAYS, windowFromDays, type RangeSummary } from '../shared/usage.ts'
 import { callOverview, loadCached, saveCached } from './api.ts'
 import type { RpcLike } from './ctx.ts'
 import type { I18n } from './locales.ts'
@@ -21,6 +22,45 @@ import { ExportMenu } from './components/ExportMenu.tsx'
 import * as React from 'react'
 
 export type Freshness = 'loading' | 'fresh' | 'stale' | 'fallback' | 'error'
+
+/** The global range window that drives the KPI / bar-chart / donut summaries. */
+export type RangeKey = '7d' | '30d' | 'all'
+
+const RANGE_DEFAULT: RangeKey = '30d'
+
+/** Day count for a range (Infinity = the full heatmap window). */
+function rangeDayCount(range: RangeKey): number {
+  return range === '7d' ? WEEK_DAYS : range === '30d' ? RECENT_DAYS : Number.POSITIVE_INFINITY
+}
+
+/** Roll a full Overview down to one range window (totals, models, sessions). */
+function summarizeRange(data: Overview, range: RangeKey): RangeSummary {
+  if (range === 'all') {
+    return {
+      totals: data.allTime.totals,
+      byModel: data.allTime.byModel,
+      sessionCount: data.allTime.sessionCount,
+    }
+  }
+  const n = range === '7d' ? WEEK_DAYS : RECENT_DAYS
+  const w = windowFromDays(data.days, n)
+  const sessionCount =
+    range === '7d' ? (typeof data.weekSessionCount === 'number' ? data.weekSessionCount : data.sessionCount) : data.sessionCount
+  return { totals: w.totals, byModel: w.byModel, sessionCount }
+}
+
+/** Provider routes for one range window (the range drives the 服务商 card). */
+function providersFor(data: Overview, range: RangeKey): ProviderItem[] {
+  if (range === '7d') return data.week.providers
+  if (range === 'all') return data.allTime.providers
+  return data.providers
+}
+
+/** The per-day records a range window covers (the bar chart's input). */
+function rangeDays(data: Overview, range: RangeKey): Overview['days'] {
+  const n = rangeDayCount(range)
+  return Number.isFinite(n) ? data.days.slice(-n) : data.days
+}
 
 interface StatsSectionProps {
   rpc: RpcLike
@@ -39,6 +79,7 @@ export function StatsSection({ rpc, i18n: baseI18n }: StatsSectionProps): JSX.El
   const [barTip, setBarTip] = useState<Tip | null>(null)
   const [donutTip, setDonutTip] = useState<Tip | null>(null)
   const [heatTip, setHeatTip] = useState<Tip | null>(null)
+  const [range, setRange] = useState<RangeKey>(RANGE_DEFAULT)
   const dataRef = useLatest(data)
 
   const load = useCallback(
@@ -74,8 +115,11 @@ export function StatsSection({ rpc, i18n: baseI18n }: StatsSectionProps): JSX.El
 
   const allTime = (data && data.allTime) || { totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, sessionCount: 0, byModel: [] }
   const allTimeTotal = allTime.totals.total || 0
-  const recentByModel = (data && data.byModel) || []
   const days = (data && data.days) || []
+  // The range window the summary cards reflect (7d / 30d / all); the heatmap
+  // stays the fixed half-year view, and sessions / providers keep all-time.
+  const summary = useMemo(() => (data ? summarizeRange(data, range) : null), [data, range])
+  const barDays = useMemo(() => (data ? rangeDays(data, range) : []), [data, range])
 
   // Header subtitle: loading → update time (+ states).
   let subText: string | null = null
@@ -108,14 +152,15 @@ export function StatsSection({ rpc, i18n: baseI18n }: StatsSectionProps): JSX.El
     )
   } else {
     const overview = data!
+    const sum = summary!
     body = (
       <>
-        <KpiCards overview={overview} i18n={i18n} />
+        <KpiCards summary={sum} coverage={overview.coverage} i18n={i18n} />
         <Heatmap days={days} i18n={i18n} onTip={setHeatTip} />
-        <BarChart days={days} byModel={recentByModel} i18n={i18n} onTip={setBarTip} />
+        <BarChart days={barDays} byModel={sum.byModel} i18n={i18n} onTip={setBarTip} />
         <SessionsCard sessions={overview.topSessions} i18n={i18n} />
-        <ProvidersCard providers={overview.providers} i18n={i18n} />
-        <ModelDonut byModel={allTime.byModel} total={allTimeTotal} i18n={i18n} onTip={setDonutTip} />
+        <ProvidersCard providers={providersFor(overview, range)} i18n={i18n} />
+        <ModelDonut byModel={sum.byModel} total={sum.totals.total} i18n={i18n} onTip={setDonutTip} />
       </>
     )
   }
@@ -154,6 +199,21 @@ export function StatsSection({ rpc, i18n: baseI18n }: StatsSectionProps): JSX.El
           </button>
         </div>
       </div>
+      {data ? (
+        <div className="dsw-ust-capsule" role="group" aria-label={t('nav.label')}>
+          {(['7d', '30d', 'all'] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={range === r ? 'on' : ''}
+              aria-pressed={range === r}
+              onClick={() => setRange(r)}
+            >
+              {t('range.' + r)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {body}
     </div>
   )

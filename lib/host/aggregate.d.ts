@@ -13,7 +13,10 @@ export interface Aggregate {
     byDay: Record<string, Record<string, Buckets>>;
     recentTotals: UsageTotals;
     recentByModel: Record<string, Buckets>;
+    recentByProvider: Record<string, Buckets>;
+    weekByProvider: Record<string, Buckets>;
     recentSessionCount: number;
+    weekSessionCount: number;
     allTimeSessionCount: number;
     retries: number;
     compactionTokens: number;

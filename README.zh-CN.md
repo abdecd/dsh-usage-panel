@@ -12,13 +12,14 @@
 
 ## 页面内容
 
-- **汇总数据（全部历史）** —— 计费输入 / 输出 Token、会话数量（次级标注总会话数与主/子代理用量拆分）、最常用模型及其占比。
-- **缓存命中率** —— `缓存读 ÷（未缓存输入 + 缓存读 + 缓存写）`，附读写绝对量。
-- **活跃热力图** —— 最近半年，GitHub 贡献图式布局（列为周、行为星期）。按非零日用量的四分位分 4 级色阶。
-- **每日柱状图** —— 按模型堆叠的每日用量，可切换最近 7 / 14 / 30 天。
-- **会话用量排行** —— 最耗 Token 的 10 个会话（含折叠标题），每行按委派深度标注**主会话**或**子代理**。
-- **服务商用量** —— 多 Provider 时以横向条形按路由展示各自 Token 消耗。
-- **模型环形图** —— 各模型全历史占比，旁边列出前 5 名；每行带**缓存命中率**列，颜色与对应分段一致。
+- **时间范围胶囊** —— 标题下方的 `7 天 / 30 天 / 全部` 分段选择器（默认 30 天）。**汇总数据、每日柱状图、模型环形图、服务商用量**随所选范围重算；活跃热力图（固定近半年）、会话排行保持全历史口径。
+- **汇总数据（随范围）** —— 计费输入 / 输出 Token、会话数量（次级标注总会话数与主/子代理用量拆分）、最常用模型及其占比。
+- **缓存命中率** —— `缓存读 ÷（未缓存输入 + 缓存读 + 缓存写）`，附读写绝对量（随范围）。
+- **活跃热力图** —— 最近半年，GitHub 贡献图式布局（列为周、行为星期）。按非零日用量的四分位分 4 级色阶（固定近半年，不随范围）。
+- **每日柱状图** —— 按模型堆叠的每日用量，随顶部胶囊范围展示对应天数。
+- **会话用量排行** —— 最耗 Token 的 10 个会话（含折叠标题），每行按委派深度标注**主会话**或**子代理**（全历史口径）。
+- **服务商用量** —— 多 Provider 时以横向条形按路由展示各自 Token 消耗（随顶部范围口径）。
+- **模型环形图** —— 各模型在当前范围内的占比，旁边列出前 5 名；每行带**缓存命中率**列，颜色与对应分段一致。
 - **导出** —— 完整 JSON、每日 CSV、模型 CSV（防公式注入、RFC 4180、UTF-8 BOM）。
 
 悬停柱子、热力图格子或环形图分段可以看到具体明细：
@@ -57,7 +58,7 @@ Host 半聚合持久化会话日志：
 
 记账规则：`request/header` 与 `request/context` 记录模型（context 打底、header 覆盖）；该步骤的 `assistant/message` 用量**替换**流式暂记用量（同一步重试的消息不会重复累计）；`llm/retry` 事件只计重试次数、不计 Token；`compaction/summary` 用量归属其自身模型并单独披露；reasoning token 已含于 output，绝不重复相加。
 
-**子会话（fork）去重**：最后一个 `session/end-seed` 标记之前的事件（fork / resume / replay 种子历史）一律不计数，fork 出的会话不会重复计算父会话的用量。
+**子会话（fork）去重**：第一个 `session/end-seed` 标记之前的事件（fork 构造种子；有 `header.seedLength` 时以其为准）一律不计数，fork 出的会话不会重复计算父会话的用量。DSH 每次重启后重开会话都会追加一个新标记（生命周期重种子）；这些**后续标记不移动边界**，长对话跨重启、跨反复压缩仍保留完整 Token 历史。
 
 **日期口径声明**：日桶与导出均按 **UTC** 自然日（`YYYY-MM-DD`）。热力图副标题明确标注口径（"最近半年 · UTC"）。
 
@@ -84,7 +85,7 @@ Host 半聚合持久化会话日志：
 | `src/shared/contract.ts` | host↔client wire 契约（单一来源） |
 | `cordis.patch.yml` | Bundle patch：向 profile 组合插入 `usage-stats` 行 |
 
-Host 通过 `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })` 提供 `overview` 端点，浏览器经 `rpc.call('/usage-stats', 'overview', …)` 调用。overview 载荷包含 `coverage`（总会话数与主/子代理用量拆分，展示于会话数量 KPI 次级文字）、`topSessions`、`providers`，并保留 v0.1.0 形态的 `days` / `totals` / `byModel` / `allTime`。基于 DeepSeek Harness `0.1.0-rc.6` 开发验证。测试使用 Node 内置 test runner（`npm test`）；CI 执行 typecheck + build + test + 打包门禁。
+Host 通过 `ctx.connection.rpc.handle('/usage-stats', …, { authority: 'loopback' })` 提供 `overview` 端点，浏览器经 `rpc.call('/usage-stats', 'overview', …)` 调用。overview 载荷包含 `coverage`（总会话数与主/子代理用量拆分，展示于会话数量 KPI 次级文字）、`topSessions`、`providers`，会话数量按窗口提供 `sessionCount`（最近 30 天有用量会话）与 `weekSessionCount`（最近 7 天有用量会话）；服务商同样按窗口提供 `providers`（最近 30 天）/ `week.providers`（最近 7 天）/ `allTime.providers`（全历史），而 `topSessions` 保持全历史口径；并保留 v0.1.0 形态的 `days` / `totals` / `byModel` / `allTime`（7 天 / 30 天的金额与分模型在客户端由 `days` 滚动，`全部` 用 `allTime`）。基于 DeepSeek Harness `0.1.0-rc.6` 开发验证。测试使用 Node 内置 test runner（`npm test`）；CI 执行 typecheck + build + test + 打包门禁。
 
 ## License
 

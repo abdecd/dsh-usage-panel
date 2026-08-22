@@ -8,9 +8,14 @@
 //
 // Accounting rules (all deliberate, see iteration-strategy §4.6):
 //  - Four DISJOINT buckets per DSH TokenUsage: input is uncached only.
-//  - Fork dedup: events with seq < the LAST session/end-seed are seed history
-//    (fork/resume/replay) and are never counted — our v0.1.0 seedLength
-//    correctness wall, preserved inside the projection.
+//  - Fork dedup: events with seq < the FIRST session/end-seed are the
+//    constructor seed (fork lineage) and are never counted — our v0.1.0
+//    seedLength correctness wall, preserved inside the projection. LATER
+//    markers are lifecycle re-seeds: dsh re-seeds a session on every
+//    restart/replay and appends a NEW marker at the end of the stored log,
+//    so a long-lived (repeatedly compacted) session accumulates several.
+//    The boundary must NOT move with them — the prefix is this session's
+//    own already-billed history (v0.2.0 "last marker" bug, see AGENTS §6.5).
 //  - Model attribution: request/context.model base, request/header.config.model
 //    overrides (v0.1.0 semantic); provider tracked the same way.
 //  - Per-step replacement: assistant/chunk provisional usage accumulates per
@@ -46,6 +51,9 @@ export const usagePanelSchema = z.object({
   byModel: z.record(z.string(), bucketSchema),
   byDay: z.record(z.string(), z.record(z.string(), bucketSchema)),
   byProvider: z.record(z.string(), bucketSchema),
+  // Per-day per-provider buckets: lets the host roll provider totals up to a
+  // window (7d / 30d) the same way byDay serves the model dimension.
+  byDayProvider: z.record(z.string(), z.record(z.string(), bucketSchema)),
   retries: z.number(),
   compactionTokens: z.number(),
   firstTime: z.number().nullable(),
@@ -77,6 +85,7 @@ export function initState(): UsagePanelState {
     byModel: {},
     byDay: {},
     byProvider: {},
+    byDayProvider: {},
     retries: 0,
     compactionTokens: 0,
     firstTime: null,
@@ -120,10 +129,17 @@ function addIntoDay(
 /**
  * Whether an event may be counted. The registry folds a cold log in ONE pass
  * (init + apply per event, no lookahead), so the unit arms itself: nothing is
- * counted until the LAST session/end-seed marker has been seen, and only
- * events at/after the marker's seq (live history) count. Seed events that
- * precede the marker in a cold fold are therefore never counted — the v0.1.0
+ * counted until the FIRST session/end-seed marker has been seen, and from
+ * then on every event at/after the marker's seq counts. LATER markers are
+ * lifecycle re-seeds (dsh appends one on every restart/replay of this
+ * session) and must not move the boundary: the prefix is this session's own
+ * already-billed history. Seed events that precede the first marker in a
+ * cold fold (fork lineage) are therefore never counted — the v0.1.0
  * seedLength correctness wall, preserved inside the projection.
+ *
+ * Note: dsh's `firstLiveSeq` doc ("locate the LAST session/end-seed")
+ * describes where THIS process's live publication starts — a publication
+ * boundary, not a billing one. The billing boundary is the FIRST marker.
  */
 function isCounted(state: UsagePanelState, event: SessionEvent): boolean {
   return state.seedEnd !== null && event.seq >= state.seedEnd
@@ -158,6 +174,7 @@ function commitStep(state: UsagePanelState, key: string): UsagePanelState {
     byModel: addInto(state.byModel, step.model, b),
     byDay: addIntoDay(state.byDay, day, step.model, b),
     byProvider: addInto(state.byProvider, step.provider, b),
+    byDayProvider: addIntoDay(state.byDayProvider, day, step.provider, b),
     firstTime: state.firstTime === null ? step.lastTime : Math.min(state.firstTime, step.lastTime),
     lastTime: state.lastTime === null ? step.lastTime : Math.max(state.lastTime, step.lastTime),
     steps: { ...state.steps },
@@ -182,9 +199,14 @@ function commitOpenStep(state: UsagePanelState, incomingKey: string): UsagePanel
 export function applyEvent(state: UsagePanelState, event: SessionEvent): UsagePanelState {
   switch (event.type) {
     case 'session/end-seed': {
-      // Last marker wins: a preset (cold fold) or earlier marker must not be
-      // overwritten by an older one.
-      if (state.seedEnd !== null && event.seq <= state.seedEnd) return state
+      // First marker wins: it delimits the constructor seed (fork
+      // boundary). Later markers are lifecycle re-seeds — dsh appends one
+      // every time this session is re-opened (restart/replay); moving the
+      // boundary forward would silently drop this session's own pre-restart
+      // history (the v0.2.0 "restarted conversation only counts its latest
+      // context" bug). A preset boundary (foldEvents / scan) is exactly the
+      // first marker / seedLength, so keep it.
+      if (state.seedEnd !== null) return state
       return { ...state, seedEnd: event.seq }
     }
     case 'request/context': {
@@ -290,6 +312,7 @@ export function applyEvent(state: UsagePanelState, event: SessionEvent): UsagePa
         byModel: addInto(state.byModel, model, b),
         byDay: addIntoDay(state.byDay, day, model, b),
         byProvider: addInto(state.byProvider, provider, b),
+        byDayProvider: addIntoDay(state.byDayProvider, day, provider, b),
         compactionTokens: state.compactionTokens + b.input + b.output + b.cacheRead + b.cacheWrite,
         firstTime: state.firstTime === null ? event.time : Math.min(state.firstTime, event.time),
         lastTime: state.lastTime === null ? event.time : Math.max(state.lastTime, event.time),
@@ -301,21 +324,39 @@ export function applyEvent(state: UsagePanelState, event: SessionEvent): UsagePa
 }
 
 /**
+ * The seed boundary (first countable seq) for a stored log. `seedLength` —
+ * the DURABLE fork-lineage value from the session header — is authoritative
+ * when > 0: a forked session's prefix is its parent's history and stays
+ * excluded even across later lifecycle re-seed markers. Otherwise the FIRST
+ * session/end-seed marker delimits the constructor seed (later markers are
+ * re-seeds, not boundaries). A log with neither was never forked — a fork
+ * always leaves the constructor marker — and counts from seq 0 (v0.1.0
+ * semantics for fresh sessions).
+ */
+export function seedBoundaryOf(events: readonly SessionEvent[], seedLength?: number): number {
+  const seed = Number(seedLength) || 0
+  if (seed > 0) return seed
+  for (const event of events) {
+    if (event.type === 'session/end-seed') return event.seq
+  }
+  return 0
+}
+
+/**
  * Fold a full event list from init (cold read path / tests). Two-pass: the
- * LAST session/end-seed marker in stored history is the seed boundary
- * (doc: "Locate the LAST one in stored history"), so it is located first and
- * preset — a single forward pass would count seed events that precede the
- * marker. The registry's own lazy cold fold is single-pass (init + apply),
- * where the unit self-arms: nothing is counted until a marker has been seen.
+ * seed boundary (seedBoundaryOf) is located first and preset — a single
+ * forward pass would count fork-seed events that precede it. Because the
+ * FULL log is visible here, "no marker at all" proves the session was never
+ * forked, so it counts from seq 0. The registry's own lazy cold fold is
+ * single-pass (init + apply) and cannot look ahead: there, nothing is
+ * counted until the first marker has been seen (self-arm) — exact for logs
+ * that start with the constructor marker.
  */
 export function foldEvents(events: readonly SessionEvent[]): UsagePanelState {
-  let seedEnd: number | null = null
-  for (const event of events) {
-    if (event.type === 'session/end-seed') seedEnd = event.seq
-  }
-  let state = { ...initState(), seedEnd }
-  for (const event of events) state = applyEvent(state, event)
-  return state
+  const state: UsagePanelState = { ...initState(), seedEnd: seedBoundaryOf(events) }
+  let current = state
+  for (const event of events) current = applyEvent(current, event)
+  return current
 }
 
 /** Sum a session's day buckets whose key >= cutoffKey (recent-30d window). */
@@ -342,4 +383,26 @@ export function recentOf(value: UsagePanelState, cutoffKey: string): { totals: B
     }
   }
   return { totals, byModel }
+}
+
+/** Sum a session's per-day provider buckets whose key >= cutoffKey (window). */
+export function providerWindowOf(value: UsagePanelState, cutoffKey: string): Record<string, Buckets> {
+  const out: Record<string, Buckets> = {}
+  const byDay = value.byDayProvider
+  for (const day of Object.keys(byDay)) {
+    if (day < cutoffKey) continue
+    for (const provider of Object.keys(byDay[day]!)) {
+      const b = byDay[day]![provider]!
+      const cur = out[provider]
+      out[provider] = cur
+        ? {
+            input: cur.input + b.input,
+            output: cur.output + b.output,
+            cacheRead: cur.cacheRead + b.cacheRead,
+            cacheWrite: cur.cacheWrite + b.cacheWrite,
+          }
+        : { ...b }
+    }
+  }
+  return out
 }

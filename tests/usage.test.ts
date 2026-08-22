@@ -14,7 +14,9 @@ import {
   sortedModels,
   totalsFrom,
   totalsFromModels,
+  windowFromDays,
   HEAT_DAYS,
+  WEEK_DAYS,
 } from '../src/shared/usage.ts'
 
 test('dayKeyUTC buckets by UTC calendar day', () => {
@@ -114,4 +116,35 @@ test('mergeInto handles zero buckets without NaN', () => {
   mergeInto(t, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
   assert.equal(t.total, 0)
   assert.ok(Number.isFinite(t.input))
+})
+
+test('windowFromDays rolls the last N days into totals + a sorted model ranking', () => {
+  const mk = (date: string, models: Record<string, { input: number; output: number }>) => {
+    const m: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }> = {}
+    let total = 0
+    for (const [name, b] of Object.entries(models)) {
+      m[name] = { input: b.input, output: b.output, cacheRead: 0, cacheWrite: 0, total: b.input + b.output }
+      total += b.input + b.output
+    }
+    return { date, total, models: m }
+  }
+  const days = [
+    mk('2026-08-12', { m1: { input: 10, output: 2 } }),
+    mk('2026-08-13', { m1: { input: 5, output: 5 }, m2: { input: 3, output: 1 } }),
+    mk('2026-08-14', { m2: { input: 7, output: 3 } }),
+    mk('2026-08-15', { m1: { input: 1, output: 1 } }),
+  ]
+  // Last 3 days = 08-13..08-15: m1 = in6/out6 (12), m2 = in10/out4 (14).
+  const w = windowFromDays(days, 3)
+  assert.equal(w.totals.input, 16)
+  assert.equal(w.totals.output, 10)
+  assert.equal(w.totals.total, 26)
+  assert.deepEqual(w.byModel.map((m) => m.model), ['m2', 'm1'])
+  assert.equal(w.byModel[0]!.total, 14)
+  assert.equal(w.byModel[1]!.total, 12)
+  // A window wider than the array covers every day (n=7 > 4 records).
+  const all = windowFromDays(days, WEEK_DAYS)
+  assert.equal(all.totals.input, 26)
+  assert.equal(all.totals.total, 38)
+  assert.equal(all.byModel.length, 2)
 })

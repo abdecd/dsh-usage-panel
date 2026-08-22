@@ -5,7 +5,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { applyEvent, foldEvents, initState, recentOf } from '../src/host/projection.ts'
+import { applyEvent, foldEvents, initState, providerWindowOf, recentOf, seedBoundaryOf } from '../src/host/projection.ts'
 
 function ev(type: string, seq: number, time: number, data: unknown): SessionEvent {
   return { type, seq, time, data } as unknown as SessionEvent
@@ -21,18 +21,124 @@ function usage(input = 0, output = 0, cacheRead = 0, cacheWrite = 0) {
   return { inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite }
 }
 
-test('seed events are never counted; live events after session/end-seed are', () => {
+test('fork seed (events before the FIRST marker) is never counted; live events after are', () => {
+  // No leading marker: a pure fork log — parent history, the constructor
+  // marker at the fork boundary, then the child's live events.
   const events = [
-    ev('request/header', 1, 1000, { header: { config: { model: 'm' } }, reason: 'initial' }),
-    ev('assistant/message', 2, 1000, { turn: 1, step: 1, usage: usage(100) }),
-    ev('session/end-seed', 3, 1000, {}),
-    ev('assistant/message', 4, 2000, { turn: 1, step: 2, usage: usage(7) }),
-    ev('step/end', 5, 2000, { turn: 1, step: 2 }),
+    ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('step/end', 1, 1000, { turn: 1, step: 1 }),
+    ev('session/end-seed', 2, 1000, {}),
+    ev('assistant/message', 3, 2000, { turn: 1, step: 2, usage: usage(7) }),
+    ev('step/end', 4, 2000, { turn: 1, step: 2 }),
+  ]
+  const state = foldEvents(events)
+  assert.equal(state.totals.input, 7)
+  assert.equal(state.seedEnd, 2)
+})
+
+test('a mid-log session/end-seed is a RE-SEED boundary: the prefix still counts', () => {
+  // withMarker => leading constructor marker; the mid-log marker is what dsh
+  // appends when the session is re-opened after a restart. Both windows are
+  // this session's own billed history and both count (v0.2.0 "last marker"
+  // bug: only the window after the LAST marker survived a restart).
+  const events = [
+    ev('assistant/message', 1, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('step/end', 2, 1000, { turn: 1, step: 1 }),
+    ev('session/end-seed', 3, 2000, {}),
+    ev('assistant/message', 4, 2000, { turn: 2, step: 1, usage: usage(7) }),
+    ev('step/end', 5, 2000, { turn: 2, step: 1 }),
   ]
   const state = foldEvents(withMarker(events))
-  assert.equal(state.totals.input, 7)
-  assert.equal(state.byModel['m']?.input, 7)
-  assert.equal(state.seedEnd, 4)
+  assert.equal(state.seedEnd, 1)
+  assert.equal(state.totals.input, 107)
+})
+
+test('repeated restart re-seeds do not drop a repeatedly compacted conversation', () => {
+  // One long-lived conversation: creation marker, work, compaction, restart
+  // re-seed markers appended by dsh, more work. ALL of it counts.
+  const events = [
+    ev('session/end-seed', 0, 0, {}),
+    ev('assistant/message', 1, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('step/end', 2, 1000, { turn: 1, step: 1 }),
+    ev('compaction/summary', 3, 2000, {
+      compactionId: 'c1', summary: [], shadowedRange: { start: 1, end: 2 }, shadowedSeqs: [1, 2],
+      shadowedTokenCount: 50, provider: 'p', model: 'compactor', usage: usage(6, 1),
+    }),
+    ev('session/end-seed', 4, 2000, {}), // dsh restart re-seed
+    ev('assistant/message', 5, 3000, { turn: 2, step: 1, usage: usage(40) }),
+    ev('step/end', 6, 3000, { turn: 2, step: 1 }),
+    ev('session/end-seed', 7, 4000, {}), // another restart
+    ev('assistant/message', 8, 4000, { turn: 3, step: 1, usage: usage(50) }),
+    ev('step/end', 9, 4000, { turn: 3, step: 1 }),
+    ev('compaction/summary', 10, 5000, {
+      compactionId: 'c2', summary: [], shadowedRange: { start: 5, end: 6 }, shadowedSeqs: [5, 6],
+      shadowedTokenCount: 90, provider: 'p', model: 'compactor', usage: usage(8, 2),
+    }),
+  ]
+  const state = foldEvents(events)
+  assert.equal(state.seedEnd, 0)
+  assert.equal(state.totals.input, 204) // 100 + 6 + 40 + 50 + 8 — nothing dropped
+  assert.equal(state.compactionTokens, 6 + 1 + 8 + 2)
+  assert.equal(state.byModel['compactor']?.input, 14)
+  // Single-pass fold (the registry's cold/live cell shape) must agree.
+  let live = initState()
+  for (const event of events) live = applyEvent(live, event)
+  assert.equal(live.seedEnd, 0)
+  assert.equal(live.totals.input, 204)
+  assert.equal(live.compactionTokens, 17)
+})
+
+test('fork boundary stays at the first marker across later restart re-seeds', () => {
+  // Parent history (excluded — billed under the parent), fork marker, child
+  // history, then a restart re-seed of the CHILD: the child keeps its full
+  // history, the parent's prefix stays excluded.
+  const events = [
+    ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('step/end', 1, 1000, { turn: 1, step: 1 }),
+    ev('session/end-seed', 2, 1000, {}), // fork boundary
+    ev('assistant/message', 3, 2000, { turn: 1, step: 1, usage: usage(7) }),
+    ev('step/end', 4, 2000, { turn: 1, step: 1 }),
+    ev('session/end-seed', 5, 3000, {}), // child restarted later
+    ev('assistant/message', 6, 3000, { turn: 2, step: 1, usage: usage(50) }),
+    ev('step/end', 7, 3000, { turn: 2, step: 1 }),
+  ]
+  const state = foldEvents(events)
+  assert.equal(state.seedEnd, 2)
+  assert.equal(state.totals.input, 57) // child's 7 + 50; parent's 100 excluded
+})
+
+test('a log without any marker (never forked) counts everything from seq 0', () => {
+  const events = [
+    ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(10) }),
+    ev('step/end', 1, 1000, { turn: 1, step: 1 }),
+  ]
+  const state = foldEvents(events)
+  assert.equal(state.seedEnd, 0)
+  assert.equal(state.totals.input, 10)
+})
+
+test('seedBoundaryOf: seedLength > 0 is authoritative over markers', () => {
+  const events = [
+    ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('session/end-seed', 5, 1000, {}),
+    ev('session/end-seed', 9, 1000, {}),
+  ]
+  assert.equal(seedBoundaryOf(events, 5), 5) // durable fork lineage
+  assert.equal(seedBoundaryOf(events, 3), 3) // header value wins over the marker
+  assert.equal(seedBoundaryOf(events, 0), 5) // falls back to the FIRST marker
+  assert.equal(seedBoundaryOf(events, undefined), 5)
+  assert.equal(seedBoundaryOf(events), 5)
+})
+
+test('seedBoundaryOf: first marker, else 0', () => {
+  const events = [
+    ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('session/end-seed', 2, 1000, {}),
+    ev('session/end-seed', 7, 1000, {}),
+  ]
+  assert.equal(seedBoundaryOf(events), 2) // FIRST marker, not the last
+  const noMarker = [ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(1) })]
+  assert.equal(seedBoundaryOf(noMarker), 0)
 })
 
 test('model attribution: request/context base, request/header overrides (v0.1.0)', () => {
@@ -148,6 +254,26 @@ test('day buckets are UTC and per-model', () => {
   assert.equal(state.byDay['2026-08-15']!['unknown']!.input, 5)
 })
 
+test('byDayProvider buckets per-day per-provider and providerWindowOf sums a window', () => {
+  const events = [
+    ev('request/context', 1, Date.UTC(2026, 6, 1), { provider: 'p1', model: 'm' }),
+    ev('assistant/message', 2, Date.UTC(2026, 6, 1), { turn: 1, step: 1, usage: usage(100) }),
+    ev('step/end', 3, Date.UTC(2026, 6, 1), { turn: 1, step: 1 }),
+    ev('request/context', 4, Date.UTC(2026, 7, 14), { provider: 'p2', model: 'm' }),
+    ev('assistant/message', 5, Date.UTC(2026, 7, 14), { turn: 2, step: 1, usage: usage(7) }),
+    ev('step/end', 6, Date.UTC(2026, 7, 14), { turn: 2, step: 1 }),
+  ]
+  const state = foldEvents(withMarker(events))
+  assert.equal(state.byDayProvider['2026-07-01']?.['p1']?.input, 100)
+  assert.equal(state.byDayProvider['2026-08-14']?.['p2']?.input, 7)
+  const recent = providerWindowOf(state, '2026-07-16')
+  assert.equal(recent['p1'], undefined) // p1 (07-01) is outside the window
+  assert.equal(recent['p2']?.input, 7)
+  const all = providerWindowOf(state, '2026-01-01')
+  assert.equal(all['p1']?.input, 100)
+  assert.equal(all['p2']?.input, 7)
+})
+
 test('recentOf sums only days >= cutoff key', () => {
   const state = foldEvents(withMarker([
     ev('assistant/message', 1, Date.UTC(2026, 6, 1, 0, 0), { turn: 1, step: 1, usage: usage(100) }),
@@ -169,4 +295,16 @@ test('firstTime/lastTime track the counted event range', () => {
   ]))
   assert.equal(state.firstTime, 5000)
   assert.equal(state.lastTime, 9000)
+})
+
+test('unknown non-usage plugin events pass through unchanged', () => {
+  const initial = foldEvents(withMarker([
+    ev('assistant/message', 1, 5000, { turn: 1, step: 1, usage: usage(10) }),
+    ev('step/end', 2, 5000, { turn: 1, step: 1 }),
+  ]))
+  const next = applyEvent(initial, ev('custom-plugin/metadata', 3, 6000, {
+    custom: true,
+  }))
+  assert.equal(next, initial)
+  assert.equal(next.totals.input, 10)
 })

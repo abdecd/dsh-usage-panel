@@ -11,6 +11,9 @@ export const NS = 'usage-panel'
 export const zhCN: Record<string, string> = {
   'nav.label': '消耗统计',
   'nav.subtitle': '只读重算会话日志 · 永不写回',
+  'range.7d': '7 天',
+  'range.30d': '30 天',
+  'range.all': '全部',
   'kpi.total': 'Token 总用量',
   'kpi.total.detail': '输入 {input} · 输出 {output}',
   'kpi.sessions': '总会话数量',
@@ -71,6 +74,9 @@ export const zhCN: Record<string, string> = {
 export const enUS: Record<string, string> = {
   'nav.label': 'Usage',
   'nav.subtitle': 'Read-only session log stats · never writes back',
+  'range.7d': '7d',
+  'range.30d': '30d',
+  'range.all': 'All',
   'kpi.total': 'Total tokens',
   'kpi.total.detail': 'In {input} · Out {output}',
   'kpi.sessions': 'Sessions',

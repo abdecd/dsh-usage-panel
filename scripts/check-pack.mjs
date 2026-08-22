@@ -9,9 +9,15 @@ const raw = execFileSync('npm', ['pack', '--dry-run', '--json'], {
   encoding: 'utf8',
   stdio: ['ignore', 'pipe', 'inherit'],
 })
+// `npm pack --dry-run --json` shapes differ across npm versions:
+//   npm < 12  → [ { files: [...] } ]  (array of pack manifests)
+//   npm >= 12 → { "<name>": { files: [...] } }  (object keyed by package name)
 const parsed = JSON.parse(raw)
-const pack = Array.isArray(parsed) ? parsed[0] : parsed
-const files = pack.files.map((f) => f.path)
+let pack = Array.isArray(parsed) ? parsed[0] : parsed
+if (pack && typeof pack === 'object' && !('files' in pack)) {
+  pack = Object.values(pack).find((v) => v && Array.isArray(v.files)) ?? pack
+}
+const files = (pack.files ?? []).map((f) => f.path)
 const offenders = files.filter(
   (p) => p.startsWith('assets/') || /\.(png|jpe?g|gif|webp|svg|mp4|mov|woff2?)$/i.test(p),
 )

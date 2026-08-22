@@ -2,9 +2,10 @@
 //
 // Used when the sessionProjections / sessionProjectionCache services are
 // unavailable: replays every session log through the SAME pure reducer as the
-// projection path (single accounting core), with the v0.1.0 fork boundary
-// (header.seedLength) synthesized as a virtual session/end-seed when the log
-// lacks the marker. Coverage counters replace the old silent `continue`.
+// projection path (single accounting core). Seed boundary = v0.1.0 semantics
+// restored: header.seedLength (durable fork lineage) is authoritative when
+// > 0; otherwise the FIRST session/end-seed marker; otherwise seq 0. Coverage
+// counters replace the old silent `continue`.
 import type { SessionQueryEngine, SessionRecord } from '@deepseek-ai/dsh-session-query'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 // Type-only imports that load the event-map augmentations for merged types.
@@ -13,7 +14,7 @@ import type { LlmRetryEventData } from '@deepseek-ai/dsh-llm-retry'
 import type { CompactionId } from '@deepseek-ai/dsh-compaction'
 import type { Overview } from '../shared/contract.ts'
 import { emptyAggregate, finalizeOverview, mergeSessionValue, type Aggregate } from './aggregate.ts'
-import { applyEvent, initState, type UsagePanelState } from './projection.ts'
+import { applyEvent, initState, seedBoundaryOf, type UsagePanelState } from './projection.ts'
 
 export interface ScanFallbackDeps {
   sq: SessionQueryEngine
@@ -94,16 +95,14 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
       continue
     }
 
-    const seedLength = Number((header as { seedLength?: unknown }).seedLength) || 0
-    // Fork boundary, v0.1.0 semantics: seed events occupy seq 1..seedLength.
-    // The last session/end-seed marker is authoritative when present; the
-    // seedLength-derived boundary covers older logs without a marker; a log
-    // with neither counts everything (fresh session).
-    let seedEnd = 0
-    for (const event of events) {
-      if (event.type === 'session/end-seed') seedEnd = event.seq
-    }
-    if (seedEnd === 0 && seedLength > 0) seedEnd = seedLength + 1
+    // Seed boundary (seedBoundaryOf): header.seedLength is the DURABLE
+    // fork-lineage value — 0 for a session that was never forked, in which
+    // case every event is its own billed history, INCLUDING the prefixes
+    // between session/end-seed markers (dsh re-seeds a session on every
+    // restart and appends a new marker; a "last marker" boundary dropped all
+    // pre-restart history of a repeatedly compacted conversation). The FIRST
+    // marker only serves headers without seedLength.
+    const seedEnd = seedBoundaryOf(events, Number((header as { seedLength?: unknown }).seedLength) || 0)
     let state: UsagePanelState = { ...initState(), seedEnd }
 
     let title: string | null = null

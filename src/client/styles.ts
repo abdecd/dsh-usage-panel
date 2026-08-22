@@ -41,6 +41,11 @@ export const CSS = [
   '.dsw-ust-range button{border:none;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;padding:5px 11px;cursor:pointer}',
   '.dsw-ust-range button:hover{color:var(--dsw-alias-label-primary)}',
   '.dsw-ust-range button.on{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-weight:600}',
+  // Global range capsule (7d / 30d / all) under the page title: pill shape.
+  '.dsw-ust-capsule{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:999px;padding:2px;flex-shrink:0}',
+  '.dsw-ust-capsule button{border:none;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;padding:5px 14px;border-radius:999px;cursor:pointer;line-height:1;white-space:nowrap}',
+  '.dsw-ust-capsule button:hover{color:var(--dsw-alias-label-primary)}',
+  '.dsw-ust-capsule button.on{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-weight:600}',
   '.dsw-ust-chart{width:100%;height:auto;display:block}',
   '.dsw-ust-axis{fill:var(--dsw-alias-label-secondary);font-size:10px;font-family:inherit}',
   '.dsw-ust-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}',

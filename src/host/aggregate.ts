@@ -4,6 +4,7 @@ import type { Buckets, CoverageStats, DayRecord, ModelItem, Overview, ProviderIt
 import {
   HEAT_DAYS,
   RECENT_DAYS,
+  WEEK_DAYS,
   buildDayWindow,
   dayKeyUTC,
   emptyTotals,
@@ -12,7 +13,7 @@ import {
   totalsFrom,
   totalsFromModels,
 } from '../shared/usage.ts'
-import { recentOf, type UsagePanelState } from './projection.ts'
+import { providerWindowOf, recentOf, type UsagePanelState } from './projection.ts'
 
 export interface SessionAgg {
   id: string
@@ -28,7 +29,10 @@ export interface Aggregate {
   byDay: Record<string, Record<string, Buckets>>
   recentTotals: UsageTotals
   recentByModel: Record<string, Buckets>
+  recentByProvider: Record<string, Buckets>
+  weekByProvider: Record<string, Buckets>
   recentSessionCount: number
+  weekSessionCount: number
   allTimeSessionCount: number
   retries: number
   compactionTokens: number
@@ -47,7 +51,10 @@ export function emptyAggregate(): Aggregate {
     byDay: {},
     recentTotals: emptyTotals(),
     recentByModel: {},
+    recentByProvider: {},
+    weekByProvider: {},
     recentSessionCount: 0,
+    weekSessionCount: 0,
     allTimeSessionCount: 0,
     retries: 0,
     compactionTokens: 0,
@@ -63,6 +70,10 @@ export function emptyAggregate(): Aggregate {
 export function mergeSessionValue(a: Aggregate, value: UsagePanelState, sessionId: string, now: number, depth = 0): Aggregate {
   const cutoffKey = dayKeyUTC(now - RECENT_DAYS * 24 * 3600 * 1000)
   const recent = recentOf(value, cutoffKey)
+  const weekCutoffKey = dayKeyUTC(now - WEEK_DAYS * 24 * 3600 * 1000)
+  const week = recentOf(value, weekCutoffKey)
+  const recentProvider = providerWindowOf(value, cutoffKey)
+  const weekProvider = providerWindowOf(value, weekCutoffKey)
   const totals = totalsFrom(value.totals)
   const next: Aggregate = {
     ...a,
@@ -115,8 +126,21 @@ export function mergeSessionValue(a: Aggregate, value: UsagePanelState, sessionI
     const cur = next.recentByModel[model]
     next.recentByModel[model] = cur ? mergeB(cur, b) : { ...b }
   }
+  for (const provider of Object.keys(recentProvider)) {
+    const b = recentProvider[provider]!
+    const cur = next.recentByProvider[provider]
+    next.recentByProvider[provider] = cur ? mergeB(cur, b) : { ...b }
+  }
+  for (const provider of Object.keys(weekProvider)) {
+    const b = weekProvider[provider]!
+    const cur = next.weekByProvider[provider]
+    next.weekByProvider[provider] = cur ? mergeB(cur, b) : { ...b }
+  }
   if (recent.totals.input + recent.totals.output + recent.totals.cacheRead + recent.totals.cacheWrite > 0) {
     next.recentSessionCount += 1
+  }
+  if (week.totals.input + week.totals.output + week.totals.cacheRead + week.totals.cacheWrite > 0) {
+    next.weekSessionCount += 1
   }
   if (totals.total > 0) {
     next.allTimeSessionCount += 1
@@ -158,12 +182,13 @@ export function finalizeOverview(input: FinalizeInput): Overview {
   const { aggregate: a, now, mode, sessionsTotal, sessionsOk, sessionsFailed, sessionsPending, eventsCounted, titles, providerNames } = input
   const recentByModel = sortedModels(a.recentByModel)
   const allTimeByModel = sortedModels(a.allTimeByModel)
-  const providerRows: ProviderItem[] = Object.keys(a.allTimeByProvider)
-    .map((id) => {
-      const b = a.allTimeByProvider[id]!
-      return { id, name: providerNames[id] || id, totals: totalsFrom(b) }
-    })
-    .sort((x, y) => y.totals.total - x.totals.total)
+  const providerRows = (byProvider: Record<string, Buckets>): ProviderItem[] =>
+    Object.keys(byProvider)
+      .map((id) => {
+        const b = byProvider[id]!
+        return { id, name: providerNames[id] || id, totals: totalsFrom(b) }
+      })
+      .sort((x, y) => y.totals.total - x.totals.total)
   const top = rankSessions(a.sessions, 10)
   const topSessions: SessionSummary[] = top.map((s) => ({
     id: s.id,
@@ -191,15 +216,20 @@ export function finalizeOverview(input: FinalizeInput): Overview {
     days: buildDayWindow(a.byDay, now),
     totals: totalsFromModels(recentByModel),
     sessionCount: a.recentSessionCount,
+    weekSessionCount: a.weekSessionCount,
     byModel: recentByModel,
+    providers: providerRows(a.recentByProvider),
+    week: {
+      providers: providerRows(a.weekByProvider),
+    },
     allTime: {
       totals: totalsFromModels(allTimeByModel),
       sessionCount: a.allTimeSessionCount,
       byModel: allTimeByModel,
+      providers: providerRows(a.allTimeByProvider),
     },
     coverage,
     topSessions,
-    providers: providerRows,
     updatedAt: now,
   }
 }

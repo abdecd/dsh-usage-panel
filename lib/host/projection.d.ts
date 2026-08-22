@@ -46,6 +46,12 @@ export declare const usagePanelSchema: z.ZodObject<{
         cacheRead: z.ZodNumber;
         cacheWrite: z.ZodNumber;
     }, z.core.$strip>>;
+    byDayProvider: z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodObject<{
+        input: z.ZodNumber;
+        output: z.ZodNumber;
+        cacheRead: z.ZodNumber;
+        cacheWrite: z.ZodNumber;
+    }, z.core.$strip>>>;
     retries: z.ZodNumber;
     compactionTokens: z.ZodNumber;
     firstTime: z.ZodNullable<z.ZodNumber>;
@@ -87,12 +93,25 @@ export declare function initState(): UsagePanelState;
  */
 export declare function applyEvent(state: UsagePanelState, event: SessionEvent): UsagePanelState;
 /**
+ * The seed boundary (first countable seq) for a stored log. `seedLength` —
+ * the DURABLE fork-lineage value from the session header — is authoritative
+ * when > 0: a forked session's prefix is its parent's history and stays
+ * excluded even across later lifecycle re-seed markers. Otherwise the FIRST
+ * session/end-seed marker delimits the constructor seed (later markers are
+ * re-seeds, not boundaries). A log with neither was never forked — a fork
+ * always leaves the constructor marker — and counts from seq 0 (v0.1.0
+ * semantics for fresh sessions).
+ */
+export declare function seedBoundaryOf(events: readonly SessionEvent[], seedLength?: number): number;
+/**
  * Fold a full event list from init (cold read path / tests). Two-pass: the
- * LAST session/end-seed marker in stored history is the seed boundary
- * (doc: "Locate the LAST one in stored history"), so it is located first and
- * preset — a single forward pass would count seed events that precede the
- * marker. The registry's own lazy cold fold is single-pass (init + apply),
- * where the unit self-arms: nothing is counted until a marker has been seen.
+ * seed boundary (seedBoundaryOf) is located first and preset — a single
+ * forward pass would count fork-seed events that precede it. Because the
+ * FULL log is visible here, "no marker at all" proves the session was never
+ * forked, so it counts from seq 0. The registry's own lazy cold fold is
+ * single-pass (init + apply) and cannot look ahead: there, nothing is
+ * counted until the first marker has been seen (self-arm) — exact for logs
+ * that start with the constructor marker.
  */
 export declare function foldEvents(events: readonly SessionEvent[]): UsagePanelState;
 /** Sum a session's day buckets whose key >= cutoffKey (recent-30d window). */
@@ -100,4 +119,6 @@ export declare function recentOf(value: UsagePanelState, cutoffKey: string): {
     totals: Buckets;
     byModel: Record<string, Buckets>;
 };
+/** Sum a session's per-day provider buckets whose key >= cutoffKey (window). */
+export declare function providerWindowOf(value: UsagePanelState, cutoffKey: string): Record<string, Buckets>;
 export {};
