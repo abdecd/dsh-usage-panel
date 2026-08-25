@@ -43,3 +43,8 @@ export declare function buildDayWindow(byDay: Record<string, Record<string, Buck
 export declare function hitRate(b: Buckets): number | null;
 /** Billed input (uncached + cache read + cache write) — the v0.1.0 "输入" number. */
 export declare function billedInput(b: Buckets): number;
+/**
+ * Concurrently process an array with an upper bound on in-flight tasks.
+ * Preserves the input array's index ordering in the output array.
+ */
+export declare function mapConcurrent<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]>;

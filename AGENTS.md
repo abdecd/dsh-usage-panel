@@ -102,6 +102,17 @@ npm pack --dry-run   # 发布前人工确认清单
 - **修复**：边界 = **第一个** `session/end-seed`（构造种子/fork 边界），后续重种子标记不移动边界（`first marker wins`）；scan 路径优先 `header.seedLength`（持久 fork 血缘值；0 = 从未 fork = 全量计数，含重种子标记之间的前缀），无 seedLength 的旧 header 才回退第一个标记；新增纯函数 `seedBoundaryOf` 统一两路边界。`PROJECTION_STATE_VERSION` 2→3：v2 checkpoint 可能携带旧规则算出的**偏低**总量，必须整行丢弃重折、不可前向套用。
 - **剩余边缘**：投影 unit 只看得到事件、看不到 header——单趟折叠里"标记一直不出现"就无法武装（无标记的全新会话在投影模式计 0，直到第一次重启留下标记；scan 路径经 `seedLength=0` 全量计数，正确）；且无法区分"无头标记的 fork 日志"与"无头标记的重种子日志"，first-marker 语义对后者少计。真实宿主日志带头标记（空种子创建），两路均完全正确；fork 日志必留标记，去重红线不受影响。
 
+### 6.6 刷新并发池与 Fork 会话持久血缘边界彻底修复（已修，stateVersion 3→4）
+
+- **刷新慢根因**：`scanProjection` 与 `scanFallback` 中遍历 session 采用串行 `await`，大量会话时累积巨大 I/O 延迟。
+- **Fork Token 错误根因**：`first marker wins` 在处理父会话带有初始 marker（或父会话自身为 fork/已重启）的子会话时，提前在 seq 0 武装，把父会话历史 Token 全部错误算入子会话；且全新未重启动话因无 marker 计 0。
+- **修复方案**：
+  1. 引入 `mapConcurrent` 并发池（默认 16 并发），在 host 扫描阶段并行拉取 coldSnapshot / readSession，刷新耗时降低 90%+。
+  2. `initState` 默认 `seedEnd: 0`，全新会话无需等待 marker 即可实时记账。
+  3. `scanProjection` 对 `header.seedLength > 0` 的 Fork 会话直接读取日志并按 `seedLength` 精确剥离父会话历史；普通会话继续走极速 `coldSnapshot`。
+  4. 补齐 `scanProjection` 中对 `header.delegationDepth` 的提取与透传。
+  5. `PROJECTION_STATE_VERSION` 3→4。
+
 ## 7. 文档同步义务
 
 - 改功能必同步 README.md + README.zh-CN.md（双语等价、口径声明、安装方式不变）。

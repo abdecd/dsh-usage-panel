@@ -13,6 +13,7 @@ import type { SessionTitleEventData } from '@deepseek-ai/dsh-session-title'
 import type { LlmRetryEventData } from '@deepseek-ai/dsh-llm-retry'
 import type { CompactionId } from '@deepseek-ai/dsh-compaction'
 import type { Overview } from '../shared/contract.ts'
+import { mapConcurrent } from '../shared/usage.ts'
 import { emptyAggregate, finalizeOverview, mergeSessionValue, type Aggregate } from './aggregate.ts'
 import { applyEvent, initState, seedBoundaryOf, type UsagePanelState } from './projection.ts'
 
@@ -68,31 +69,24 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     })
   }
 
-  for (const rec of sessions) {
+  const results = await mapConcurrent(sessions, 16, async (rec) => {
     const header = rec && rec.header
     if (!header) {
-      sessionsTotal += 1
-      sessionsFailed += 1
-      continue
+      return { status: 'failed' as const, err: 'missing header' }
     }
     const sessionId = header.id
-    sessionsTotal += 1
     if (!rec.persisted) {
-      sessionsPending += 1
-      continue
+      return { status: 'pending' as const, sessionId }
     }
     let snapshot: { events?: SessionEvent[] } | null = null
     try {
-      snapshot = await sq.readSession(header.id)
+      snapshot = await sq.readSession(sessionId)
     } catch (err) {
-      sessionsFailed += 1
-      logFailure('readSession ' + sessionId + ' failed: ' + String((err as Error)?.message ?? err))
-      continue
+      return { status: 'failed' as const, sessionId, err: String((err as Error)?.message ?? err) }
     }
     const events = snapshot && snapshot.events
     if (!events || !events.length) {
-      sessionsOk += 1
-      continue
+      return { status: 'ok' as const, sessionId, title: null, state: initState(), depth: 0, counted: 0 }
     }
 
     // Seed boundary (seedBoundaryOf): header.seedLength is the DURABLE
@@ -102,23 +96,37 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     // restart and appends a new marker; a "last marker" boundary dropped all
     // pre-restart history of a repeatedly compacted conversation). The FIRST
     // marker only serves headers without seedLength.
-    const seedEnd = seedBoundaryOf(events, Number((header as { seedLength?: unknown }).seedLength) || 0)
+    const seedLength = Number((header as { seedLength?: unknown }).seedLength) || 0
+    const seedEnd = seedBoundaryOf(events, seedLength)
     let state: UsagePanelState = { ...initState(), seedEnd }
 
     let title: string | null = null
+    let counted = 0
     for (const event of events) {
       if (event.type === 'session/title') {
         title = event.data.title
         // Fall through to the reducer (uninterested → same reference).
       }
-      if (isCountedEvent(state, event)) eventsCounted += 1
+      if (isCountedEvent(state, event)) counted += 1
       state = applyEvent(state, event)
     }
-    titles.set(sessionId, title)
-    // mergeSessionValue is pure — the returned aggregate replaces the old one.
     const depth = Number((header as { delegationDepth?: unknown }).delegationDepth) || 0
-    a = mergeSessionValue(a, state, sessionId, now, depth)
-    sessionsOk += 1
+    return { status: 'ok' as const, sessionId, title, state, depth, counted }
+  })
+
+  for (const res of results) {
+    sessionsTotal += 1
+    if (res.status === 'failed') {
+      sessionsFailed += 1
+      if (res.err) logFailure('readSession failed: ' + res.err)
+    } else if (res.status === 'pending') {
+      sessionsPending += 1
+    } else {
+      sessionsOk += 1
+      eventsCounted += res.counted
+      if (res.title !== null) titles.set(res.sessionId, res.title)
+      a = mergeSessionValue(a, res.state, res.sessionId, now, res.depth)
+    }
   }
 
   return finalizeOverview({

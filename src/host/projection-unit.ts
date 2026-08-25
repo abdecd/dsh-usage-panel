@@ -8,10 +8,10 @@ import { USAGE_PANEL_KEY, applyEvent, initState, usagePanelSchema, type UsagePan
 // can be rolled up to a window; persisted checkpoints re-fold on this bump.
 // v3: seed-boundary semantics fixed — the FIRST session/end-seed marker (or
 // the header seedLength) is the fork boundary; LATER markers are lifecycle
-// re-seeds (dsh appends one per restart) and must not move it. v2 checkpoints
-// may carry undercounted totals from the old "last marker" rule, so they must
-// be discarded and re-folded from the log, never forward-applied.
-export const PROJECTION_STATE_VERSION = 3
+// re-seeds (dsh appends one per restart) and must not move it.
+// v4: fork-lineage boundary is authoritative via header.seedLength; fresh
+// sessions default to seq 0 so unseeded conversations count immediately.
+export const PROJECTION_STATE_VERSION = 4
 
 export const usagePanelProjectionDefinition: ProjectionDefinition<
   typeof USAGE_PANEL_KEY,

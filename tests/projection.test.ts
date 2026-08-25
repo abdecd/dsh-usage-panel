@@ -117,7 +117,7 @@ test('a log without any marker (never forked) counts everything from seq 0', () 
   assert.equal(state.totals.input, 10)
 })
 
-test('seedBoundaryOf: seedLength > 0 is authoritative over markers', () => {
+test('seedBoundaryOf: seedLength >= 0 is authoritative over markers', () => {
   const events = [
     ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(100) }),
     ev('session/end-seed', 5, 1000, {}),
@@ -125,9 +125,42 @@ test('seedBoundaryOf: seedLength > 0 is authoritative over markers', () => {
   ]
   assert.equal(seedBoundaryOf(events, 5), 5) // durable fork lineage
   assert.equal(seedBoundaryOf(events, 3), 3) // header value wins over the marker
-  assert.equal(seedBoundaryOf(events, 0), 5) // falls back to the FIRST marker
+  assert.equal(seedBoundaryOf(events, 0), 0) // seedLength = 0 means unforked, ignores restart marker
   assert.equal(seedBoundaryOf(events, undefined), 5)
   assert.equal(seedBoundaryOf(events), 5)
+})
+
+test('forked conversation with parent leading marker correctly excludes parent history', () => {
+  // Parent session had a creation marker at seq 0, then message at seq 1.
+  // Child is forked at seq 2, gets child's fork marker at seq 2, child message at seq 3.
+  const events = [
+    ev('session/end-seed', 0, 1000, {}), // parent creation marker
+    ev('assistant/message', 1, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('step/end', 2, 1000, { turn: 1, step: 1 }),
+    ev('session/end-seed', 3, 2000, {}), // fork boundary
+    ev('assistant/message', 4, 2000, { turn: 1, step: 1, usage: usage(7) }),
+    ev('step/end', 5, 2000, { turn: 1, step: 1 }),
+  ]
+  // With header seedLength = 3 (the exact fork boundary):
+  const state = foldEvents(events, 3)
+  assert.equal(state.seedEnd, 3)
+  assert.equal(state.totals.input, 7) // parent's 100 is excluded!
+})
+
+test('nested fork (fork of a fork) excludes all ancestral history', () => {
+  const events = [
+    ev('assistant/message', 0, 1000, { turn: 1, step: 1, usage: usage(100) }),
+    ev('step/end', 1, 1000, { turn: 1, step: 1 }),
+    ev('session/end-seed', 2, 1000, {}), // fork 1
+    ev('assistant/message', 3, 2000, { turn: 1, step: 1, usage: usage(50) }),
+    ev('step/end', 4, 2000, { turn: 1, step: 1 }),
+    ev('session/end-seed', 5, 2000, {}), // fork 2
+    ev('assistant/message', 6, 3000, { turn: 1, step: 1, usage: usage(15) }),
+    ev('step/end', 7, 3000, { turn: 1, step: 1 }),
+  ]
+  const state = foldEvents(events, 5)
+  assert.equal(state.seedEnd, 5)
+  assert.equal(state.totals.input, 15) // only child 2's usage
 })
 
 test('seedBoundaryOf: first marker, else 0', () => {

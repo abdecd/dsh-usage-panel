@@ -85,7 +85,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
         usagePanel: UsagePanelState;
     }
 }
-export declare function initState(): UsagePanelState;
+export declare function initState(seedEnd?: number | null): UsagePanelState;
 /**
  * Pure transition: previous state + one committed session event → next state.
  * Returns the SAME reference for unrelated events (zero downstream work, per
@@ -95,25 +95,19 @@ export declare function applyEvent(state: UsagePanelState, event: SessionEvent):
 /**
  * The seed boundary (first countable seq) for a stored log. `seedLength` —
  * the DURABLE fork-lineage value from the session header — is authoritative
- * when > 0: a forked session's prefix is its parent's history and stays
- * excluded even across later lifecycle re-seed markers. Otherwise the FIRST
- * session/end-seed marker delimits the constructor seed (later markers are
- * re-seeds, not boundaries). A log with neither was never forked — a fork
- * always leaves the constructor marker — and counts from seq 0 (v0.1.0
- * semantics for fresh sessions).
+ * when explicitly provided (even if 0): a forked session's prefix is its
+ * parent's history and stays excluded across later lifecycle re-seed markers,
+ * while an unforked session (seedLength === 0) counts all of its own history.
+ * When `seedLength` is omitted, falls back to the FIRST session/end-seed marker,
+ * or seq 0 if no marker is present.
  */
 export declare function seedBoundaryOf(events: readonly SessionEvent[], seedLength?: number): number;
 /**
  * Fold a full event list from init (cold read path / tests). Two-pass: the
  * seed boundary (seedBoundaryOf) is located first and preset — a single
- * forward pass would count fork-seed events that precede it. Because the
- * FULL log is visible here, "no marker at all" proves the session was never
- * forked, so it counts from seq 0. The registry's own lazy cold fold is
- * single-pass (init + apply) and cannot look ahead: there, nothing is
- * counted until the first marker has been seen (self-arm) — exact for logs
- * that start with the constructor marker.
+ * forward pass would count fork-seed events that precede it.
  */
-export declare function foldEvents(events: readonly SessionEvent[]): UsagePanelState;
+export declare function foldEvents(events: readonly SessionEvent[], seedLength?: number): UsagePanelState;
 /** Sum a session's day buckets whose key >= cutoffKey (recent-30d window). */
 export declare function recentOf(value: UsagePanelState, cutoffKey: string): {
     totals: Buckets;

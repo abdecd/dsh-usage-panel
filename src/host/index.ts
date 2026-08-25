@@ -16,7 +16,9 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import type { SessionProjectionCache } from '@deepseek-ai/dsh-session-projection-cache'
 import { RPC_CHANNEL, RPC_OVERVIEW, type CoverageStats, type Overview, type RpcResult } from '../shared/contract.ts'
+import { mapConcurrent } from '../shared/usage.ts'
 import { emptyAggregate, emptyOverview, finalizeOverview, mergeSessionValue, rankSessions } from './aggregate.ts'
+import { foldEvents, initState } from './projection.ts'
 import { usagePanelProjectionDefinition } from './projection-unit.ts'
 import { scanFallback } from './scan.ts'
 import type { HostConnection, HostLlm } from './types.ts'
@@ -88,33 +90,62 @@ export function apply(ctx: Context): void {
       logFailure('listSessions failed: ' + String((err as Error)?.message ?? err))
       return emptyOverview(now)
     }
-    for (const rec of sessions) {
+
+    const results = await mapConcurrent(sessions, 16, async (rec) => {
       const header = rec && rec.header
       if (!header) {
-        sessionsTotal += 1
-        sessionsFailed += 1
-        continue
+        return { status: 'failed' as const, err: 'missing header' }
       }
       const id = header.id
-      sessionsTotal += 1
       if (!rec.persisted) {
-        sessionsPending += 1
-        continue
+        return { status: 'pending' as const, id }
       }
+
+      const seedLength = Number((header as { seedLength?: unknown }).seedLength) || 0
+      const depth = Number((header as { delegationDepth?: unknown }).delegationDepth) || 0
+
+      // Forked sessions: the projection cache folds without header lineage,
+      // so read the session log and fold with the durable fork boundary.
+      if (seedLength > 0) {
+        try {
+          const snap = await sq!.readSession(id)
+          const events = snap && snap.events
+          if (!events || !events.length) {
+            return { status: 'ok' as const, id, value: initState(), depth }
+          }
+          const value = foldEvents(events, seedLength)
+          return { status: 'ok' as const, id, value, depth }
+        } catch (err) {
+          return { status: 'failed' as const, id, err: String((err as Error)?.message ?? err) }
+        }
+      }
+
+      // Normal sessions (unforked): read cold snapshot from projection cache.
       try {
         const snap = await projCache!.coldSnapshot(id)
         const value = snap.values.usagePanel
         if (!value) {
-          sessionsPending += 1 // cell not folded yet (no events / cold)
-          continue
+          return { status: 'pending' as const, id }
         }
-        a = mergeSessionValue(a, value, id, now)
-        sessionsOk += 1
+        return { status: 'ok' as const, id, value, depth }
       } catch (err) {
+        return { status: 'failed' as const, id, err: String((err as Error)?.message ?? err) }
+      }
+    })
+
+    for (const res of results) {
+      sessionsTotal += 1
+      if (res.status === 'failed') {
         sessionsFailed += 1
-        if (failures.length < 3) failures.push(String((err as Error)?.message ?? err))
+        if (res.err && failures.length < 3) failures.push(res.err)
+      } else if (res.status === 'pending') {
+        sessionsPending += 1
+      } else {
+        sessionsOk += 1
+        a = mergeSessionValue(a, res.value, res.id, now, res.depth)
       }
     }
+
     if (failures.length > 0) {
       logFailure(sessionsFailed + ' session(s) failed to read (first ' + failures.length + '): ' + failures.join(' | '))
     }

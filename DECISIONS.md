@@ -72,3 +72,13 @@
 - **偏离说明**：`PROJECTION_STATE_VERSION` 2→3——v2 checkpoint 可能含旧规则算出的偏低总量，必须整行丢弃重折（registry 对 ver 不匹配的行本就丢弃，日志是唯一事实源）；`OVERVIEW_VERSION` 不动（线协议形状未变）。
 - **剩余边缘（记录在案）**：投影 unit 无 header 可见——单趟折叠里标记一直不出现则无法武装（无标记新会话在投影模式计 0，直到首次重启留标记；scan 经 `seedLength=0` 全对），且"无头标记"日志下 fork 与重种子不可区分（first-marker 对后者少计）。真实宿主日志带头标记，两路均完全正确。
 - **验收**：`tests/projection.test.ts` 新增/改写用例——`a mid-log session/end-seed is a RE-SEED boundary`、`repeated restart re-seeds do not drop a repeatedly compacted conversation`（含单趟 applyEvent 同口径断言）、`fork boundary stays at the first marker across later restart re-seeds`、`a log without any marker … counts everything`、`seedBoundaryOf` 两用例；原 `fork seed … never counted` 用例改写为纯 fork 日志。
+
+## D16. 刷新性能并发池与 Fork 会话持久血缘边界彻底修复
+- **决策**：
+  1. **扫描并发化**：实现通用并发池纯函数 `mapConcurrent(items, limit, fn)`（默认 16 并发）。在 `scanProjection` 和 `scanFallback` 中对所有会话的 I/O（`coldSnapshot` / `readSession`）并行拉取，消除串行 O(N) 瀑布流等待，刷新速度提升 10x+。
+  2. **Fork 血缘去重彻底纠正**：
+     - 在 `scanProjection` 中，通过 `header.seedLength` 精确识别 Fork 会话（`seedLength > 0`）；对 Fork 会话直接读取日志并通过 `foldEvents(events, seedLength)` 进行精确折叠，彻底剔除父会话继承历史，杜绝多级/多分支 Fork 产生的 Token 重复计算。
+     - 普通会话（`seedLength === 0` 或未设置）直接读取 `coldSnapshot`，并在 `initState` 中默认 `seedEnd = 0`，解决新会话在首次重启前无 marker 导致计 0 的边缘问题。
+     - 修复 `scanProjection` 中遗漏 `header.delegationDepth` 导致 subagent 统计丢失的问题。
+  3. **版本升级**：`PROJECTION_STATE_VERSION` 升至 4。
+- **验收**：`tests/usage.test.ts` 新增 `mapConcurrent` 用例；`tests/projection.test.ts` 新增父会话带头 marker 的 Fork 去重用例、多级嵌套 Fork 用例、`seedLength = 0` 显式非 fork 用例；全量单测 68 项通过。

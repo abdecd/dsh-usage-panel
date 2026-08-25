@@ -166,3 +166,30 @@ export function hitRate(b: Buckets): number | null {
 export function billedInput(b: Buckets): number {
   return b.input + b.cacheRead + b.cacheWrite
 }
+
+/**
+ * Concurrently process an array with an upper bound on in-flight tasks.
+ * Preserves the input array's index ordering in the output array.
+ */
+export async function mapConcurrent<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const count = items.length
+  if (count === 0) return []
+  const results = new Array<R>(count)
+  let cursor = 0
+  const workers = Math.min(Math.max(1, limit), count)
+
+  async function worker(): Promise<void> {
+    while (cursor < count) {
+      const idx = cursor++
+      results[idx] = await fn(items[idx]!, idx)
+    }
+  }
+
+  await Promise.all(Array.from({ length: workers }, worker))
+  return results
+}
+

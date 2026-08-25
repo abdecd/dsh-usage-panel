@@ -79,7 +79,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 
 const EMPTY: Buckets = Object.freeze({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
 
-export function initState(): UsagePanelState {
+export function initState(seedEnd: number | null = 0): UsagePanelState {
   return {
     totals: { ...EMPTY },
     byModel: {},
@@ -90,7 +90,7 @@ export function initState(): UsagePanelState {
     compactionTokens: 0,
     firstTime: null,
     lastTime: null,
-    seedEnd: null,
+    seedEnd,
     currentModel: 'unknown',
     currentProvider: 'unknown',
     openStep: null,
@@ -326,16 +326,16 @@ export function applyEvent(state: UsagePanelState, event: SessionEvent): UsagePa
 /**
  * The seed boundary (first countable seq) for a stored log. `seedLength` —
  * the DURABLE fork-lineage value from the session header — is authoritative
- * when > 0: a forked session's prefix is its parent's history and stays
- * excluded even across later lifecycle re-seed markers. Otherwise the FIRST
- * session/end-seed marker delimits the constructor seed (later markers are
- * re-seeds, not boundaries). A log with neither was never forked — a fork
- * always leaves the constructor marker — and counts from seq 0 (v0.1.0
- * semantics for fresh sessions).
+ * when explicitly provided (even if 0): a forked session's prefix is its
+ * parent's history and stays excluded across later lifecycle re-seed markers,
+ * while an unforked session (seedLength === 0) counts all of its own history.
+ * When `seedLength` is omitted, falls back to the FIRST session/end-seed marker,
+ * or seq 0 if no marker is present.
  */
 export function seedBoundaryOf(events: readonly SessionEvent[], seedLength?: number): number {
-  const seed = Number(seedLength) || 0
-  if (seed > 0) return seed
+  if (typeof seedLength === 'number') {
+    return seedLength > 0 ? seedLength : 0
+  }
   for (const event of events) {
     if (event.type === 'session/end-seed') return event.seq
   }
@@ -345,15 +345,10 @@ export function seedBoundaryOf(events: readonly SessionEvent[], seedLength?: num
 /**
  * Fold a full event list from init (cold read path / tests). Two-pass: the
  * seed boundary (seedBoundaryOf) is located first and preset — a single
- * forward pass would count fork-seed events that precede it. Because the
- * FULL log is visible here, "no marker at all" proves the session was never
- * forked, so it counts from seq 0. The registry's own lazy cold fold is
- * single-pass (init + apply) and cannot look ahead: there, nothing is
- * counted until the first marker has been seen (self-arm) — exact for logs
- * that start with the constructor marker.
+ * forward pass would count fork-seed events that precede it.
  */
-export function foldEvents(events: readonly SessionEvent[]): UsagePanelState {
-  const state: UsagePanelState = { ...initState(), seedEnd: seedBoundaryOf(events) }
+export function foldEvents(events: readonly SessionEvent[], seedLength?: number): UsagePanelState {
+  const state: UsagePanelState = { ...initState(), seedEnd: seedBoundaryOf(events, seedLength) }
   let current = state
   for (const event of events) current = applyEvent(current, event)
   return current

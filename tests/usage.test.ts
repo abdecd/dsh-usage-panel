@@ -148,3 +148,25 @@ test('windowFromDays rolls the last N days into totals + a sorted model ranking'
   assert.equal(all.totals.total, 38)
   assert.equal(all.byModel.length, 2)
 })
+
+test('mapConcurrent preserves order and limits concurrency', async () => {
+  const { mapConcurrent } = await import('../src/shared/usage.ts')
+  let active = 0
+  let maxActive = 0
+  const items = [10, 20, 30, 40, 50, 60]
+  const results = await mapConcurrent(items, 2, async (item) => {
+    active++
+    maxActive = Math.max(maxActive, active)
+    await new Promise((r) => setTimeout(r, 5))
+    active--
+    return item * 2
+  })
+  assert.deepEqual(results, [20, 40, 60, 80, 100, 120])
+  assert.ok(maxActive <= 2)
+})
+
+test('mapConcurrent handles empty items gracefully', async () => {
+  const { mapConcurrent } = await import('../src/shared/usage.ts')
+  const results = await mapConcurrent([], 4, async (x) => x)
+  assert.deepEqual(results, [])
+})
