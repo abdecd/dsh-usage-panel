@@ -131,4 +131,5 @@ export interface Overview {
   stale?: boolean
 }
 
-export const OVERVIEW_VERSION = 5
+// Route attribution is now re-derived from legacy assistant message provenance.
+export const OVERVIEW_VERSION = 6

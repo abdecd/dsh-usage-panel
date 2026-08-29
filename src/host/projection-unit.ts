@@ -11,7 +11,8 @@ import { USAGE_PANEL_KEY, applyEvent, initState, usagePanelSchema, type UsagePan
 // re-seeds (dsh appends one per restart) and must not move it.
 // v4: fork-lineage boundary is authoritative via header.seedLength; fresh
 // sessions default to seq 0 so unseeded conversations count immediately.
-export const PROJECTION_STATE_VERSION = 4
+// v5: recover legacy assistant/message routes from message provenance.
+export const PROJECTION_STATE_VERSION = 5
 
 export const usagePanelProjectionDefinition: ProjectionDefinition<
   typeof USAGE_PANEL_KEY,

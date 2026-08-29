@@ -82,3 +82,11 @@
      - 修复 `scanProjection` 中遗漏 `header.delegationDepth` 导致 subagent 统计丢失的问题。
   3. **版本升级**：`PROJECTION_STATE_VERSION` 升至 4。
 - **验收**：`tests/usage.test.ts` 新增 `mapConcurrent` 用例；`tests/projection.test.ts` 新增父会话带头 marker 的 Fork 去重用例、多级嵌套 Fork 用例、`seedLength = 0` 显式非 fork 用例；全量单测 68 项通过。
+
+
+## D17. 历史会话路由回退与全局统计范围
+
+- **决策**：统计继续覆盖 profile 内全部会话，不按 `cwd` 过滤；跨工作区子会话以自身 `header.cwd` 作为归属，`parentSession` 只保留谱系语义。旧日志缺少 `request/header` / `request/context` 时，使用 `assistant/message.message.source` 恢复实际 provider/model。
+- **原因**：旧 Fork 日志的 assistant 消息仍携带完整模型 provenance；只解析 request 元数据会把真实用量错误聚合到 `unknown`。按 `cwd` 过滤会改变既定的全局统计口径。
+- **版本**：`PROJECTION_STATE_VERSION` 升至 5，`OVERVIEW_VERSION` 升至 6，使派生 checkpoint 与浏览器缓存按新归因重建。
+- **验收**：无 request 元数据但带 assistant message provenance 的 fixture 必须归因到该 provider/model，且总 Token 不变。

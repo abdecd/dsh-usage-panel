@@ -45,7 +45,7 @@ npm pack --dry-run   # 发布前人工确认清单
 ## 5. 正确性红线（本项目的壁垒，任何重构不得破坏）
 
 1. **fork 去重**：`header.seedLength` 之后的 `assistant/message` 才计数（竞品 dashboard 无此逻辑会重复计费）。
-2. **双源模型归因**：`request/context.model` 打底，`request/header.config.model` 覆盖。
+2. **模型/Provider 归因**：`request/context` 打底，`request/header` 覆盖；旧日志缺少 request 事件时，以 `assistant/message.message.source` 的实际模型路由为准；无法恢复时才保留 `unknown`，禁止冒充其他真实模型。
 3. **四桶记账**：input/output/cacheRead/cacheWrite 分开；v0.2.0 起升级为落盘投影后：流式 `assistant/chunk` 的 provisional usage 必须被最终 `assistant/message` 覆盖；`llm/retry` 独立计数；`compaction/summary` 独立归因；reasoning 已含于 output，不重复加。
 4. **日期口径 UTC**：dayKey 用 UTC 桶（v0.1.0 用本地时区，跨时区漂移），README 与 UI 必须显式声明口径。
 5. **只读承诺**：永不写回原始会话日志；投影机制的落盘是框架对派生缓存的落盘，不触碰原始日志。
@@ -112,6 +112,12 @@ npm pack --dry-run   # 发布前人工确认清单
   3. `scanProjection` 对 `header.seedLength > 0` 的 Fork 会话直接读取日志并按 `seedLength` 精确剥离父会话历史；普通会话继续走极速 `coldSnapshot`。
   4. 补齐 `scanProjection` 中对 `header.delegationDepth` 的提取与透传。
   5. `PROJECTION_STATE_VERSION` 3→4。
+
+### 6.7 历史日志路由归因与跨工作区子会话
+
+- **现象**：旧 Fork/重放会话可能没有 `request/header` 与 `request/context`，但 `assistant/message.message.source` 仍保存实际 provider/model；只读 request 元数据会产生大额 `unknown` 行。
+- **修复**：每个 assistant step 优先读取 `message.source`，再回退到 request 元数据；统计仍覆盖 profile 内全部会话。子会话的工作区归属以自身 `header.cwd` 为准，`parentSession` 仅用于谱系，不把跨工作区子会话移入父项目。
+- **红线**：不得为了修复旧日志而写回原始会话、递归读取父谱系，或把缺失模型强行归入某个真实模型；改 reducer 后必须递增 projection state version 触发派生缓存重折。
 
 ## 7. 文档同步义务
 

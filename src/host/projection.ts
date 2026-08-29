@@ -17,7 +17,9 @@
 //    The boundary must NOT move with them — the prefix is this session's
 //    own already-billed history (v0.2.0 "last marker" bug, see AGENTS §6.5).
 //  - Model attribution: request/context.model base, request/header.config.model
-//    overrides (v0.1.0 semantic); provider tracked the same way.
+//    overrides (v0.1.0 semantic); provider tracked the same way. For legacy
+//    logs without request metadata, assistant/message.message.source is the
+//    authoritative route fallback.
 //  - Per-step replacement: assistant/chunk provisional usage accumulates per
 //    (turn:step); the step's assistant/message REPLACES it (authoritative), so
 //    a retried same-step message cannot double-count (v0.1.0 bug, fixed).
@@ -100,6 +102,25 @@ export function initState(seedEnd: number | null = 0): UsagePanelState {
 
 function stepKey(turn: number, step: number): string {
   return turn + ':' + step
+}
+
+interface ModelRoute {
+  provider: string
+  model: string
+}
+
+/**
+ * Recover the exact route that produced a historical assistant message.
+ * Newer sessions also carry request/context and request/header events, but
+ * older fork/replay logs may not. The message provenance is the most local
+ * and authoritative source for that step.
+ */
+function routeFromAssistantMessage(event: SessionEvent<'assistant/message'>): ModelRoute | null {
+  const source = event.data.message?.source
+  if (!source || source.kind !== 'model') return null
+  const provider = typeof source.provider === 'string' ? source.provider.trim() : ''
+  const model = typeof source.model === 'string' ? source.model.trim() : ''
+  return provider && model ? { provider, model } : null
 }
 
 function add(a: Buckets, b: Buckets): Buckets {
@@ -258,8 +279,17 @@ export function applyEvent(state: UsagePanelState, event: SessionEvent): UsagePa
     }
     case 'assistant/message': {
       if (!isCounted(state, event)) return state
+
+      // The provenance on the assembled message survives in legacy fork logs
+      // even when request/header and request/context were never persisted.
+      // Prefer it for this step and remember it for following provisional-only
+      // events; request metadata remains the fallback for older message shapes.
+      const route = routeFromAssistantMessage(event)
+      const routed = route
+        ? { ...state, currentModel: route.model, currentProvider: route.provider }
+        : state
       const usage = event.data.usage
-      if (!usage) return state
+      if (!usage) return routed
       const key = stepKey(event.data.turn, event.data.step)
       const b = {
         input: Number(usage.inputTokens) || 0,
@@ -267,7 +297,7 @@ export function applyEvent(state: UsagePanelState, event: SessionEvent): UsagePa
         cacheRead: Number(usage.cacheReadTokens) || 0,
         cacheWrite: Number(usage.cacheWriteTokens) || 0,
       }
-      let next = commitOpenStep(state, key)
+      let next = commitOpenStep(routed, key)
       const step: StepState = {
         buckets: b,
         lastTime: event.time,

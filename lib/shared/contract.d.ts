@@ -118,4 +118,4 @@ export interface Overview {
     /** Set when the payload came from a stale cache while a rescan runs. */
     stale?: boolean;
 }
-export declare const OVERVIEW_VERSION = 5;
+export declare const OVERVIEW_VERSION = 6;

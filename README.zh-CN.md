@@ -56,7 +56,7 @@ Host 半聚合持久化会话日志：
 - **主路径（增量）**：注册一个会话投影（`ctx.sessionProjections`，带 `stateVersion` 校验），把每个已提交事件折叠进四个互斥桶 —— 未缓存输入 / 输出 / 缓存读 / 缓存写 —— 以及按模型、按 Provider、按天（UTC）的映射。checkpoint 落盘，重启与保鲜扫描几乎零回放。
 - **回退路径（全量重扫）**：投影服务不可用时，同一套 reducer 通过只读 `sessionQuery` 服务重放每个会话日志。
 
-记账规则：`request/header` 与 `request/context` 记录模型（context 打底、header 覆盖）；该步骤的 `assistant/message` 用量**替换**流式暂记用量（同一步重试的消息不会重复累计）；`llm/retry` 事件只计重试次数、不计 Token；`compaction/summary` 用量归属其自身模型并单独披露；reasoning token 已含于 output，绝不重复相加。
+记账规则：`request/header` 与 `request/context` 记录模型（context 打底、header 覆盖）；对于缺少这些 request 事件的旧日志，从完整的 `assistant/message.message.source` 读取准确的 Provider/模型路由；该步骤的 `assistant/message` 用量**替换**流式暂记用量（同一步重试的消息不会重复累计）；`llm/retry` 事件只计重试次数、不计 Token；`compaction/summary` 用量归属其自身模型并单独披露；reasoning token 已含于 output，绝不重复相加。统计覆盖 profile 内全部会话；子会话仍按自己的 `cwd` 归属，`parentSession` 仅表示谱系关系。
 
 **子会话（fork）去重**：第一个 `session/end-seed` 标记之前的事件（fork 构造种子；有 `header.seedLength` 时以其为准）一律不计数，fork 出的会话不会重复计算父会话的用量。DSH 每次重启后重开会话都会追加一个新标记（生命周期重种子）；这些**后续标记不移动边界**，长对话跨重启、跨反复压缩仍保留完整 Token 历史。
 

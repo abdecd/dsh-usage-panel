@@ -188,6 +188,43 @@ test('model attribution: request/context base, request/header overrides (v0.1.0)
   assert.equal(state.byProvider['p1']?.input, 30)
 })
 
+test('legacy assistant message provenance recovers the route without request metadata', () => {
+  const events = [
+    ev('assistant/message', 1, 1000, {
+      turn: 1,
+      step: 1,
+      message: { source: { kind: 'model', provider: 'antigravity', model: 'gemini-3.7-flash' } },
+      usage: usage(10, 2, 30),
+    }),
+    ev('step/end', 2, 1000, { turn: 1, step: 1 }),
+  ]
+  const state = foldEvents(withMarker(events))
+  assert.deepEqual(state.byModel['gemini-3.7-flash'], { input: 10, output: 2, cacheRead: 30, cacheWrite: 0 })
+  assert.deepEqual(state.byProvider.antigravity, { input: 10, output: 2, cacheRead: 30, cacheWrite: 0 })
+  assert.equal(state.byModel.unknown, undefined)
+  assert.equal(state.byProvider.unknown, undefined)
+})
+
+test('assistant message provenance overrides a stale request route for its step', () => {
+  const events = [
+    ev('request/context', 1, 1000, { provider: 'old-provider', model: 'old-model' }),
+    ev('assistant/message', 2, 1000, {
+      turn: 1,
+      step: 1,
+      message: { source: { kind: 'model', provider: 'new-provider', model: 'new-model' } },
+      usage: usage(7),
+    }),
+    ev('step/end', 3, 1000, { turn: 1, step: 1 }),
+  ]
+  const state = foldEvents(withMarker(events))
+  assert.equal(state.byModel['old-model'], undefined)
+  assert.equal(state.byProvider['old-provider'], undefined)
+  assert.equal(state.byModel['new-model']?.input, 7)
+  assert.equal(state.byProvider['new-provider']?.input, 7)
+  assert.equal(state.currentModel, 'new-model')
+  assert.equal(state.currentProvider, 'new-provider')
+})
+
 test('chunk provisional accumulates and is replaced by the authoritative message', () => {
   const events = [
     ev('assistant/chunk', 1, 1000, { turn: 1, step: 1, chunk: { type: 'usage', usage: usage(10, 2) } }),
