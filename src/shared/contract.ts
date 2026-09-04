@@ -57,7 +57,9 @@ export type AggregationMode = 'projection' | 'scan' | 'none'
 /**
  * Honest coverage diagnostics: the overview never claims to be a complete
  * bill when part of the corpus could not be scanned. `sessionsPending` =
- * sessions with no persisted log yet (live, mid-turn). `from`/`to` bound the
+ * sessions with no persisted log yet (live, mid-turn). When the durable usage
+ * ledger is available, `sessionsTotal` also includes retained session
+ * lifecycles whose original logs are no longer listed. `from`/`to` bound the
  * earliest/latest counted event time; `mode` says which data path produced
  * the payload.
  */

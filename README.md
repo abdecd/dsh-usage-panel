@@ -2,7 +2,7 @@
 
 # dsh-usage-panel
 
-Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), shown as a page under **Settings → Usage** in the web GUI. The plugin aggregates persisted session logs (incrementally, via the session-projection mechanism) and never writes anything back.
+Token usage statistics for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), shown as a page under **Settings → Usage** in the web GUI. The plugin aggregates persisted session logs incrementally, writes only a derived usage ledger, and never modifies the original session logs.
 
 [简体中文](README.zh-CN.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![npm downloads](https://img.shields.io/npm/dm/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![CI](https://github.com/AlfredChaos/dsh-usage-panel/actions/workflows/ci.yml/badge.svg)](https://github.com/AlfredChaos/dsh-usage-panel/actions/workflows/ci.yml) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![Mentioned in Awesome DeepSeek Harness](https://awesome.re/mentioned-badge.svg)](https://github.com/0xsline/awesome-deepseek-harness)
 
@@ -43,7 +43,7 @@ dsh plugin --profile web add github:AlfredChaos/dsh-usage-panel
 dsh plugin --profile web add ./dsh-usage-panel
 ```
 
-Restart `dsh --profile web` and open **Settings → Usage**. The npm package ships prebuilt JavaScript under `lib/` with no install scripts; GitHub installs need no pnpm build allowance either, because the same files are committed to the repository. To remove it:
+Restart `dsh --profile web` and open **Settings → Usage**. Deletion retention requires the host's `storageDomain` service (provided by the standard Web profile); without it the panel still reports usage but cannot guarantee retention after raw logs are deleted. The npm package ships prebuilt JavaScript under `lib/` with no install scripts; GitHub installs need no pnpm build allowance either, because the same files are committed to the repository. To remove it:
 
 ```sh
 dsh plugin --profile web remove dsh-usage-panel
@@ -51,10 +51,11 @@ dsh plugin --profile web remove dsh-usage-panel
 
 ## Where the numbers come from
 
-The host half aggregates persisted session logs:
+The host half aggregates persisted session logs and the independent historical ledger:
 
 - **Primary path (incremental)**: a session projection (registered through `ctx.sessionProjections`, `stateVersion`-checked) folds every committed event into four disjoint buckets — uncached input, output, cache read, cache write — plus per-model, per-provider and per-day (UTC) maps. Checkpoints are durable, so restarts and keep-warm passes cost almost no replay.
-- **Fallback path (full rescan)**: when the projection services are unavailable, the same reducer replays every session log through the read-only `sessionQuery` service.
+- **Historical statistics ledger**: the `storageDomain` `usage_stats` domain stores each calculated result by session lifecycle (`id + createdAt + cwd`) together with the persistence revision. An unchanged revision is reused directly; only a changed session is recalculated. Ledger rows are never deleted when a conversation is archived or its raw log is deleted.
+- **Fallback path (revision-aware)**: when projection services are unavailable, the same reducer computes through the read-only `sessionQuery` service; a cached session whose revision is unchanged is not read again.
 
 Accounting rules: `request/header` and `request/context` events record the model (context base, header override); for legacy logs without those request events, the assembled `assistant/message.message.source` supplies the exact provider/model route; the step's `assistant/message` usage replaces streamed provisional usage (a retried same-step message never double-counts); `llm/retry` events are counted as retries, not tokens; `compaction/summary` usage is attributed to its own model and reported separately; reasoning tokens are already inside output and are never added again. Statistics cover all sessions in the profile; a child session remains attributed to its own `cwd`, while `parentSession` is lineage only.
 
@@ -62,11 +63,11 @@ Accounting rules: `request/header` and `request/context` events record the model
 
 **Timezone declaration**: day buckets and exports use **UTC** calendar days (`YYYY-MM-DD`); the heatmap subtitle declares the scope ("last 6 months · UTC").
 
-Because nothing is written back, statistics survive restarts and cover sessions from before the plugin was installed.
+The plugin never writes back to the original session logs; it only writes a separate derived statistics ledger. Statistics therefore survive restarts. Once the initial scan has recorded a session, its Token history remains after the conversation is archived or its raw log is deleted. Existing sessions are backfilled on the first startup; a session physically deleted before that first scan cannot be recovered.
 
 ## Loading behavior
 
-The first scan starts as soon as the plugin loads, so the page usually renders straight from cache. A payload is considered fresh for 10 minutes; older ones are returned immediately with a `stale` flag (the page shows "updating in background") while a rescan refreshes the cache. A keep-warm timer rescans every 10 minutes, and the refresh button always forces a synchronous scan. The browser additionally keeps the last successful payload in `localStorage` (versioned and structure-validated), so a page refresh renders instantly; a failed refresh keeps the cached numbers and says so instead of faking freshness.
+The first scan starts as soon as the plugin loads, so the page usually renders straight from cache. The host first loads the durable ledger and lightweight per-log revisions: an unchanged revision reuses its saved result, while only new or changed sessions are computed and saved. A payload is considered fresh for 10 minutes; older ones are returned immediately with a `stale` flag (the page shows "updating in background") while a rescan refreshes the cache. A keep-warm timer rescans every 10 minutes, and the refresh button always forces a synchronous scan. The browser additionally keeps the last successful payload in `localStorage` (versioned and structure-validated), so a page refresh renders instantly; a failed refresh keeps the cached numbers and says so instead of faking freshness.
 
 ## Units
 
@@ -78,8 +79,9 @@ Source is TypeScript (strict) in `src/`, built with esbuild; the `lib/` outputs 
 
 | File | Role |
 | --- | --- |
-| `src/host/index.ts` → `lib/index.js` | Host half (Cordis plugin): projection registration, aggregation, cached RPC with warm-up, fail-soft fallback |
+| `src/host/index.ts` → `lib/index.js` | Host half (Cordis plugin): projection registration, durable statistics ledger, aggregation, cached RPC with warm-up, fail-soft fallback |
 | `src/host/projection.ts` | Pure per-session projection reducer (four buckets, fork dedup, retry/compaction semantics, UTC days) |
+| `src/host/history.ts` | Independent durable statistics ledger (revision hits, lifecycle isolation, retention after archive/delete) |
 | `src/host/aggregate.ts` | Cross-session merge → overview payload |
 | `src/client/*` → `lib/client.js` | Client half (`./client` export, `__ModuleLoader__` bundle): settings-page UI in TSX, `--dsw-*` tokens, zh/en i18n |
 | `src/shared/contract.ts` | Host↔client wire contract (single source of truth) |

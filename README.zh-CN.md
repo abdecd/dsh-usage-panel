@@ -2,7 +2,7 @@
 
 # dsh-usage-panel
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Token 用量统计插件，在 Web GUI 的「设置 → 消耗统计」下展示。插件通过会话投影机制增量聚合持久化会话日志，永不写回任何数据。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Token 用量统计插件，在 Web GUI 的「设置 → 消耗统计」下展示。插件通过会话投影机制增量聚合持久化会话日志，只写入独立的派生统计账本，永不修改原始会话日志。
 
 [English](README.md) · [![npm](https://img.shields.io/npm/v/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![npm downloads](https://img.shields.io/npm/dm/dsh-usage-panel)](https://www.npmjs.com/package/dsh-usage-panel) [![CI](https://github.com/AlfredChaos/dsh-usage-panel/actions/workflows/ci.yml/badge.svg)](https://github.com/AlfredChaos/dsh-usage-panel/actions/workflows/ci.yml) [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin) [![Mentioned in Awesome DeepSeek Harness](https://awesome.re/mentioned-badge.svg)](https://github.com/0xsline/awesome-deepseek-harness)
 
@@ -43,7 +43,7 @@ dsh plugin --profile web add github:AlfredChaos/dsh-usage-panel
 dsh plugin --profile web add ./dsh-usage-panel
 ```
 
-重启 `dsh --profile web`，打开「设置 → 消耗统计」。npm 包内 `lib/` 下是预构建的纯 JavaScript 产物，无安装脚本；GitHub 安装同样不需要 pnpm 的构建放行，因为仓库里提交了相同的文件。卸载：
+重启 `dsh --profile web`，打开「设置 → 消耗统计」。持久删除保留依赖宿主启用 `storageDomain`（标准 Web profile 已提供）；若宿主没有该服务，面板仍可统计，但不能承诺删除原始日志后的保留。npm 包内 `lib/` 下是预构建的纯 JavaScript 产物，无安装脚本；GitHub 安装同样不需要 pnpm 的构建放行，因为仓库里提交了相同的文件。卸载：
 
 ```sh
 dsh plugin --profile web remove dsh-usage-panel
@@ -51,10 +51,11 @@ dsh plugin --profile web remove dsh-usage-panel
 
 ## 数据来源
 
-Host 半聚合持久化会话日志：
+Host 半聚合持久化会话日志与独立的历史统计账本：
 
 - **主路径（增量）**：注册一个会话投影（`ctx.sessionProjections`，带 `stateVersion` 校验），把每个已提交事件折叠进四个互斥桶 —— 未缓存输入 / 输出 / 缓存读 / 缓存写 —— 以及按模型、按 Provider、按天（UTC）的映射。checkpoint 落盘，重启与保鲜扫描几乎零回放。
-- **回退路径（全量重扫）**：投影服务不可用时，同一套 reducer 通过只读 `sessionQuery` 服务重放每个会话日志。
+- **历史统计账本**：在 `storageDomain` 的 `usage_stats` 域中按「会话 ID + 创建时间 + cwd」保存已计算结果和持久化 revision。revision 不变就直接复用，只有该会话更新才重算；账本行不会随归档或原始日志删除而删除。
+- **回退路径（带 revision 缓存）**：投影服务不可用时，同一套 reducer 通过只读 `sessionQuery` 服务计算；已缓存且 revision 未变的会话不再读取日志。
 
 记账规则：`request/header` 与 `request/context` 记录模型（context 打底、header 覆盖）；对于缺少这些 request 事件的旧日志，从完整的 `assistant/message.message.source` 读取准确的 Provider/模型路由；该步骤的 `assistant/message` 用量**替换**流式暂记用量（同一步重试的消息不会重复累计）；`llm/retry` 事件只计重试次数、不计 Token；`compaction/summary` 用量归属其自身模型并单独披露；reasoning token 已含于 output，绝不重复相加。统计覆盖 profile 内全部会话；子会话仍按自己的 `cwd` 归属，`parentSession` 仅表示谱系关系。
 
@@ -62,11 +63,11 @@ Host 半聚合持久化会话日志：
 
 **日期口径声明**：日桶与导出均按 **UTC** 自然日（`YYYY-MM-DD`）。热力图副标题明确标注口径（"最近半年 · UTC"）。
 
-因为不写回任何数据，统计在重启后依然存在，也能覆盖插件安装之前的历史会话。
+插件不写回原始会话日志，只写入独立的派生统计账本。因此统计在重启后依然存在；已完成首次扫描的会话即使之后被归档或删除原始日志，Token 历史也不会消失。插件首次启用时会先为现有会话建立账本；如果会话在首次扫描前就已被物理删除，则无法从不存在的原始日志恢复。
 
 ## 加载策略
 
-插件加载时立即开始首次扫描，打开页面时通常直接命中缓存。缓存 10 分钟内视为新鲜；更旧的缓存会立即返回并标记 `stale`（页面显示「后台更新中…」），同时后台重扫刷新。每 10 分钟定时轻量重扫保鲜，刷新按钮始终强制同步重扫。浏览器还会把最近一次成功载荷存入 `localStorage`（带版本号与结构校验），刷新页面即刻渲染；刷新失败时保留旧数据并如实标注，绝不伪装最新。
+插件加载时立即开始首次扫描，打开页面时通常直接命中缓存。Host 会先读取持久化账本和每个会话的轻量 revision：revision 未变的会话直接复用结果，只有新增或变化的会话才计算；首次遇到的会话才建立账本行。缓存 10 分钟内视为新鲜；更旧的缓存会立即返回并标记 `stale`（页面显示「后台更新中…」），同时后台重扫刷新。每 10 分钟定时轻量重扫保鲜，刷新按钮始终强制同步重扫。浏览器还会把最近一次成功载荷存入 `localStorage`（带版本号与结构校验），刷新页面即刻渲染；刷新失败时保留旧数据并如实标注，绝不伪装最新。
 
 ## 单位
 
@@ -78,8 +79,9 @@ Host 半聚合持久化会话日志：
 
 | 文件 | 说明 |
 | --- | --- |
-| `src/host/index.ts` → `lib/index.js` | Host 半（Cordis 插件）：投影注册、聚合、带预热的 RPC 缓存、fail-soft 回退 |
+| `src/host/index.ts` → `lib/index.js` | Host 半（Cordis 插件）：投影注册、持久统计账本、聚合、带预热的 RPC 缓存、fail-soft 回退 |
 | `src/host/projection.ts` | 纯函数会话投影 reducer（四桶、fork 去重、重试/压缩语义、UTC 日桶） |
+| `src/host/history.ts` | 独立持久统计账本（revision 命中、会话生命周期隔离、归档/删除后保留） |
 | `src/host/aggregate.ts` | 跨会话合并 → overview 载荷 |
 | `src/client/*` → `lib/client.js` | Client 半（`./client` 导出，`__ModuleLoader__` bundle）：TSX 设置页 UI，`--dsw-*` 变量，中英双语 |
 | `src/shared/contract.ts` | host↔client wire 契约（单一来源） |

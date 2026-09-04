@@ -1,7 +1,7 @@
 {
   "name": "dsh-usage-panel",
   "version": "0.2.0",
-  "description": "DeepSeek Harness 消耗统计插件：设置页「消耗统计」展示 Token 用量 KPI、半年活跃贡献热力图、按模型堆叠柱状图与模型环形图（Host 投影聚合 + 只读重算会话日志，永不写回）",
+  "description": "DeepSeek Harness 消耗统计插件：设置页「消耗统计」展示 Token 用量 KPI、半年活跃贡献热力图、按模型堆叠柱状图与模型环形图（Host 增量投影 + 持久统计账本，永不写回原始会话）",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/host/index.d.ts",
@@ -45,7 +45,13 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "react": "^18.3.1"
+    "react": "^18.3.1",
+    "@deepseek-ai/dsh-storage-domain": "^0.1.0-rc.6"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-storage-domain": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -61,6 +67,7 @@
     "@deepseek-ai/dsh-session-projection-cache": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-session-query": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-session-title": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-storage-domain": "^0.1.0-rc.6",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "esbuild": "^0.24.2",

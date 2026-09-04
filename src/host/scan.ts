@@ -1,13 +1,14 @@
 // dsh-usage-panel · fallback scan path (v0.1.0 logic ported to TS).
 //
 // Used when the sessionProjections / sessionProjectionCache services are
-// unavailable: replays every session log through the SAME pure reducer as the
-// projection path (single accounting core). Seed boundary = v0.1.0 semantics
-// restored: header.seedLength (durable fork lineage) is authoritative when
-// > 0; otherwise the FIRST session/end-seed marker; otherwise seq 0. Coverage
-// counters replace the old silent `continue`.
+// unavailable: folds through the SAME pure reducer as the projection path
+// (single accounting core). The durable usage_stats ledger is checked first;
+// only a missing or changed persistence revision replays a session log. Seed
+// boundary = header.seedLength (durable fork lineage), otherwise the FIRST
+// session/end-seed marker, otherwise seq 0. Coverage counters replace the old
+// silent `continue`.
 import type { SessionQueryEngine, SessionRecord } from '@deepseek-ai/dsh-session-query'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 // Type-only imports that load the event-map augmentations for merged types.
 import type { SessionTitleEventData } from '@deepseek-ai/dsh-session-title'
 import type { LlmRetryEventData } from '@deepseek-ai/dsh-llm-retry'
@@ -15,35 +16,57 @@ import type { CompactionId } from '@deepseek-ai/dsh-compaction'
 import type { Overview } from '../shared/contract.ts'
 import { mapConcurrent } from '../shared/usage.ts'
 import { emptyAggregate, finalizeOverview, mergeSessionValue, type Aggregate } from './aggregate.ts'
-import { applyEvent, initState, seedBoundaryOf, type UsagePanelState } from './projection.ts'
+import { foldEvents } from './projection.ts'
+import { PROJECTION_STATE_VERSION } from './projection-unit.ts'
+import {
+  countUsageEvents,
+  makeUsageLedgerRow,
+  sameLedgerLifecycle,
+  titleFromEvents,
+  usageLedgerKey,
+  type UsageLedger,
+  type UsageLedgerRow,
+} from './history.ts'
 
 export interface ScanFallbackDeps {
   sq: SessionQueryEngine
   providerNames: Record<string, string>
   logFailure: (message: string) => void
+  ledger?: UsageLedger | null
+  revisions?: ReadonlyMap<string, string>
+  liveSessionOf?: (id: SessionId) => Session | undefined
 }
 
-/** True for events the reducer will count (post-seed usage / retry). */
-function isCountedEvent(state: { seedEnd: number | null }, event: SessionEvent): boolean {
-  if (state.seedEnd === null || event.seq < state.seedEnd) return false
-  switch (event.type) {
-    case 'assistant/message':
-      return !!event.data.usage
-    case 'assistant/chunk':
-      return !!event.data.chunk && event.data.chunk.type === 'usage' && !!event.data.chunk.usage
-    case 'compaction/summary':
-      return !!event.data.usage
-    case 'llm/retry':
-      return true
-    default:
-      return false
-  }
+function seedLengthOf(header: SessionRecord['header']): number | undefined {
+  const raw = (header as { seedLength?: unknown }).seedLength
+  return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined
+}
+
+function depthOf(header: SessionRecord['header']): number {
+  return Number((header as { delegationDepth?: unknown }).delegationDepth) || 0
+}
+
+function cachedRowOf(
+  row: UsageLedgerRow | undefined,
+  header: SessionRecord['header'],
+  revision: string | null,
+): UsageLedgerRow | undefined {
+  if (!row || revision === null) return undefined
+  if (!sameLedgerLifecycle(row, header)) return undefined
+  // A fallback row made by a previous reducer version is still retained as a
+  // historical fallback, but it must not seed a new calculation.
+  if (row.stateVersion !== PROJECTION_STATE_VERSION || row.revision !== revision) return undefined
+  return row
 }
 
 export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise<Overview> {
-  const { sq, providerNames, logFailure } = deps
+  const { sq, providerNames, logFailure, ledger, revisions = new Map(), liveSessionOf } = deps
+  const entries = ledger ? ledger.entries() : []
+  const rowsByKey = new Map(entries)
   let a: Aggregate = emptyAggregate()
   const titles = new Map<string, string | null>()
+  const currentKeys = new Set<string>()
+  const seenKeys = new Set<string>()
   let sessionsTotal = 0
   let sessionsOk = 0
   let sessionsFailed = 0
@@ -55,15 +78,21 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     sessions = await sq.listSessions()
   } catch (err) {
     logFailure('listSessions failed: ' + String((err as Error)?.message ?? err))
+    for (const [key, row] of entries) {
+      a = mergeSessionValue(a, row.state, row.session.id, now, row.depth)
+      titles.set(row.session.id, row.title)
+      eventsCounted += row.eventsCounted
+      seenKeys.add(key)
+    }
     return finalizeOverview({
       aggregate: a,
       now,
       mode: 'scan',
-      sessionsTotal: 0,
-      sessionsOk: 0,
+      sessionsTotal: entries.length,
+      sessionsOk: entries.length,
       sessionsFailed: 0,
       sessionsPending: 0,
-      eventsCounted: 0,
+      eventsCounted,
       titles,
       providerNames,
     })
@@ -71,47 +100,67 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
 
   const results = await mapConcurrent(sessions, 16, async (rec) => {
     const header = rec && rec.header
-    if (!header) {
-      return { status: 'failed' as const, err: 'missing header' }
-    }
+    if (!header) return { status: 'failed' as const, err: 'missing header' }
+
     const sessionId = header.id
-    if (!rec.persisted) {
-      return { status: 'pending' as const, sessionId }
-    }
-    let snapshot: { events?: SessionEvent[] } | null = null
-    try {
-      snapshot = await sq.readSession(sessionId)
-    } catch (err) {
-      return { status: 'failed' as const, sessionId, err: String((err as Error)?.message ?? err) }
-    }
-    const events = snapshot && snapshot.events
-    if (!events || !events.length) {
-      return { status: 'ok' as const, sessionId, title: null, state: initState(), depth: 0, counted: 0 }
-    }
-
-    // Seed boundary (seedBoundaryOf): header.seedLength is the DURABLE
-    // fork-lineage value — 0 for a session that was never forked, in which
-    // case every event is its own billed history, INCLUDING the prefixes
-    // between session/end-seed markers (dsh re-seeds a session on every
-    // restart and appends a new marker; a "last marker" boundary dropped all
-    // pre-restart history of a repeatedly compacted conversation). The FIRST
-    // marker only serves headers without seedLength.
-    const seedLength = Number((header as { seedLength?: unknown }).seedLength) || 0
-    const seedEnd = seedBoundaryOf(events, seedLength)
-    let state: UsagePanelState = { ...initState(), seedEnd }
-
-    let title: string | null = null
-    let counted = 0
-    for (const event of events) {
-      if (event.type === 'session/title') {
-        title = event.data.title
-        // Fall through to the reducer (uninterested → same reference).
+    const key = usageLedgerKey(header)
+    currentKeys.add(key)
+    const live = rec.live && liveSessionOf ? liveSessionOf(sessionId) : undefined
+    const revision = live ? 'live:' + live.seq : revisions.get(key) ?? null
+    const stored = rowsByKey.get(key)
+    const cached = cachedRowOf(stored, header, revision)
+    const stale = stored && sameLedgerLifecycle(stored, header) ? stored : undefined
+    if (cached) {
+      return {
+        status: 'ok' as const,
+        sessionId,
+        key,
+        title: cached.title,
+        state: cached.state,
+        depth: cached.depth,
+        counted: cached.eventsCounted,
+        cached: true,
       }
-      if (isCountedEvent(state, event)) counted += 1
-      state = applyEvent(state, event)
     }
-    const depth = Number((header as { delegationDepth?: unknown }).delegationDepth) || 0
-    return { status: 'ok' as const, sessionId, title, state, depth, counted }
+
+    if (!rec.persisted && !live) return { status: 'pending' as const, sessionId, key, fallback: stale }
+
+    try {
+      const seedLength = seedLengthOf(header)
+      const events = live ? live.events : (await sq.readSession(sessionId)).events
+      const state = foldEvents(events, seedLength)
+      const title = titleFromEvents(events)
+      const counted = countUsageEvents(events, seedLength)
+      const depth = depthOf(header)
+      const row = makeUsageLedgerRow({
+        header,
+        revision: revision ?? 'uncached:' + String(events.at(-1)?.seq ?? -1),
+        state,
+        title,
+        depth,
+        eventsCounted: counted,
+        lastSeq: events.at(-1)?.seq ?? -1,
+      })
+      if (ledger && revision !== null) {
+        try {
+          await ledger.put(key, row)
+          rowsByKey.set(key, row)
+        } catch (err) {
+          // The ledger is an optimization/retention sidecar; a write failure
+          // must not turn a successfully folded session into a scan failure.
+          logFailure('usage history write failed: ' + String((err as Error)?.message ?? err))
+        }
+      }
+      return { status: 'ok' as const, sessionId, key, title, state, depth, counted, cached: false }
+    } catch (err) {
+      return {
+        status: 'failed' as const,
+        sessionId,
+        key,
+        err: String((err as Error)?.message ?? err),
+        fallback: stale,
+      }
+    }
   })
 
   for (const res of results) {
@@ -119,13 +168,39 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     if (res.status === 'failed') {
       sessionsFailed += 1
       if (res.err) logFailure('readSession failed: ' + res.err)
+      if (res.fallback) {
+        seenKeys.add(res.key!)
+        a = mergeSessionValue(a, res.fallback.state, res.sessionId!, now, res.fallback.depth)
+        titles.set(res.sessionId!, res.fallback.title)
+        eventsCounted += res.fallback.eventsCounted
+      }
     } else if (res.status === 'pending') {
       sessionsPending += 1
+      if (res.fallback) {
+        seenKeys.add(res.key!)
+        a = mergeSessionValue(a, res.fallback.state, res.sessionId!, now, res.fallback.depth)
+        titles.set(res.sessionId!, res.fallback.title)
+        eventsCounted += res.fallback.eventsCounted
+      }
     } else {
+      seenKeys.add(res.key)
       sessionsOk += 1
       eventsCounted += res.counted
-      if (res.title !== null) titles.set(res.sessionId, res.title)
+      titles.set(res.sessionId, res.title)
       a = mergeSessionValue(a, res.state, res.sessionId, now, res.depth)
+    }
+  }
+
+  // A ledger row is intentionally retained even when the source session no
+  // longer appears in sessionQuery (archive or physical log deletion).
+  for (const [key, row] of entries) {
+    if (seenKeys.has(key)) continue
+    a = mergeSessionValue(a, row.state, row.session.id, now, row.depth)
+    titles.set(row.session.id, row.title)
+    eventsCounted += row.eventsCounted
+    if (!currentKeys.has(key)) {
+      sessionsTotal += 1
+      sessionsOk += 1
     }
   }
 

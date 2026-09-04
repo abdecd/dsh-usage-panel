@@ -24,7 +24,13 @@ await build({
   logLevel: 'info',
 })
 
-const res = spawnSync('node', ['--test', 'tests-dist/**/*.test.js'], {
+const testEntries = globSync(root + 'tests-dist/**/*.test.js')
+if (!testEntries.length) {
+  console.error('[run-tests] test compilation produced no test files')
+  process.exit(1)
+}
+
+const res = spawnSync('node', ['--test', ...testEntries], {
   cwd: root,
   stdio: 'inherit',
 })

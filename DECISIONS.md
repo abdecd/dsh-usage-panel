@@ -90,3 +90,10 @@
 - **原因**：旧 Fork 日志的 assistant 消息仍携带完整模型 provenance；只解析 request 元数据会把真实用量错误聚合到 `unknown`。按 `cwd` 过滤会改变既定的全局统计口径。
 - **版本**：`PROJECTION_STATE_VERSION` 升至 5，`OVERVIEW_VERSION` 升至 6，使派生 checkpoint 与浏览器缓存按新归因重建。
 - **验收**：无 request 元数据但带 assistant message provenance 的 fixture 必须归因到该 provider/model，且总 Token 不变。
+
+## D18. 独立持久统计账本：revision 命中与删除后保留
+
+- **决策**：新增 `storageDomain` 下的 `usage_stats` 域，每个「会话 ID + createdAt + cwd」生命周期保存一份已折叠的 `UsagePanelState`、持久化 revision、标题和 delegation depth。revision 与当前 reducer 版本都匹配时直接复用；只有新会话或 revision 变化的会话重新计算。
+- **保留语义**：账本是统计的历史源，不随 `sessionQuery` 列表变化、归档或原始会话日志删除而删除；会话 ID 重用通过生命周期 key 隔离。原始日志仍只读，账本是独立派生缓存。
+- **实时写入**：在 `session/event(turn/end)`、`session/flush` 与 `session/disposed` 边界保存 live 会话，首次扫描为既有会话回填；账本写失败 fail-soft，不影响当前统计读取。
+- **版本/验证**：使用 `SessionPersistence.listSnapshots()` 的轻量 revision，不计算完整日志 hash；若 revision 能力不可用，保守回退原有投影/全量重扫路径。`tests/history.test.ts` 锁定未变化零读取、单会话失效、删除行保留与 ID 重用隔离。

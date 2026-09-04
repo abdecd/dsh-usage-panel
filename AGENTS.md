@@ -15,7 +15,7 @@ DeepSeek Harness 的 Token 用量统计插件（设置页「消耗统计」）�
 ## 2. 常用命令（v0.2.0 TS 化后）
 
 ```sh
-npm install          # devDeps: typescript / esbuild / @types/react / @deepseek-ai/* (rc.6, 带 .d.ts)
+npm install          # devDeps: typescript / esbuild / @types/react / @deepseek-ai/* (rc.6, 带 .d.ts；含 storage-domain 类型)
 npm run build        # esbuild: src/host → lib/index.js (ESM) + src/client → ModuleLoader CJS + 声明
 npm run typecheck    # tsc --noEmit (strict, noUncheckedIndexedAccess)
 npm test             # node --test（tests/ 纯函数单测，fixture 锁口径）
@@ -39,7 +39,7 @@ npm pack --dry-run   # 发布前人工确认清单
 - host 错误只返回**机器可读错误码**，client 按码查词典渲染——禁止 host 返回中文文案再由 client 正则匹配翻译（dashboard `i18n.tsx:26-45` 的脆做法）。
 - 纯函数先行：聚合/单位换算/四分位/导出防护等逻辑必须先抽成纯函数 + 单测，再进 UI。
 - 客户端 bundle 形态是硬契约：`window.__ModuleLoader__.load({ id: 'dsh-usage-panel', factory(require) })`，`exports.apply` + `exports.inject`。改这个形状等于破坏宿主加载。构建 = esbuild + `scripts/wrap-client.mjs`（wrapper 里 `var React = require('react')` 供经典 JSX transform 使用）。
-- **数据路径二选一（同一 reducer）**：投影模式（`sessionProjections` + `sessionProjectionCache`，增量落盘）与全量重扫模式（`sessionQuery` 重放）共用 `src/host/projection.ts` 的 `applyEvent`。加记账逻辑只改 reducer + 单测，两路同时生效。模式切换在 `src/host/index.ts` 的 `mode` 判定，fail-soft（注册失败 → scan → none）。
+- **数据路径二选一（同一 reducer）**：投影模式（`sessionProjections` + `sessionProjectionCache`，增量落盘）与全量重扫模式（`sessionQuery` 重放）共用 `src/host/projection.ts` 的 `applyEvent`。加记账逻辑只改 reducer + 单测，两路同时生效。模式切换在 `src/host/index.ts` 的 `mode` 判定，fail-soft（注册失败 → scan → none）。两路之上另有 `storageDomain` 的 `usage_stats` 历史账本：以 `SessionPersistence.listSnapshots()` 的 revision 命中每会话结果，原始日志删除后仍从账本聚合。
 - 测试：`tests/*.test.ts` 用 esbuild 编译后跑 Node 内置 test runner；fixture 锁口径（UTC 日桶、fork 去重、重试替换、压缩归因）。
 
 ## 5. 正确性红线（本项目的壁垒，任何重构不得破坏）
@@ -48,7 +48,7 @@ npm pack --dry-run   # 发布前人工确认清单
 2. **模型/Provider 归因**：`request/context` 打底，`request/header` 覆盖；旧日志缺少 request 事件时，以 `assistant/message.message.source` 的实际模型路由为准；无法恢复时才保留 `unknown`，禁止冒充其他真实模型。
 3. **四桶记账**：input/output/cacheRead/cacheWrite 分开；v0.2.0 起升级为落盘投影后：流式 `assistant/chunk` 的 provisional usage 必须被最终 `assistant/message` 覆盖；`llm/retry` 独立计数；`compaction/summary` 独立归因；reasoning 已含于 output，不重复加。
 4. **日期口径 UTC**：dayKey 用 UTC 桶（v0.1.0 用本地时区，跨时区漂移），README 与 UI 必须显式声明口径。
-5. **只读承诺**：永不写回原始会话日志；投影机制的落盘是框架对派生缓存的落盘，不触碰原始日志。
+5. **只读承诺**：永不写回原始会话日志；投影 checkpoint 与 `usage_stats` 账本都是独立派生数据，不触碰原始日志。
 6. **安全边界**：RPC `{ authority: 'loopback' }`，不开放裸 HTTP 端口。
 7. **入口稳定**：`settings.section` id `usage-stats`、order 25、RPC 通道 `/usage-stats`——这些 id 被宿主配置引用，改名即破坏安装。
 
@@ -118,6 +118,13 @@ npm pack --dry-run   # 发布前人工确认清单
 - **现象**：旧 Fork/重放会话可能没有 `request/header` 与 `request/context`，但 `assistant/message.message.source` 仍保存实际 provider/model；只读 request 元数据会产生大额 `unknown` 行。
 - **修复**：每个 assistant step 优先读取 `message.source`，再回退到 request 元数据；统计仍覆盖 profile 内全部会话。子会话的工作区归属以自身 `header.cwd` 为准，`parentSession` 仅用于谱系，不把跨工作区子会话移入父项目。
 - **红线**：不得为了修复旧日志而写回原始会话、递归读取父谱系，或把缺失模型强行归入某个真实模型；改 reducer 后必须递增 projection state version 触发派生缓存重折。
+
+### 6.8 永久统计账本（revision cache + archive/delete retention）
+
+- `sessionProjectionCache` 只是投影 checkpoint，不能单独保证原始会话删除后统计仍可见；`src/host/history.ts` 的 `usage_stats` 才是独立的历史统计账本。
+- 优先使用 `SessionPersistence.listSnapshots()` 的不透明 revision，不要为检测 append-only 日志变化而重新读取并 hash 全量事件；revision 变化才允许重算该会话。
+- 账本 key 必须包含 `id + createdAt + cwd`，不能只用 SessionId：DSH SessionId 是可复用的 slot，避免新生命周期覆盖旧统计。
+- 账本写入必须 fail-soft，且不得响应归档/删除而删除账本行；原始日志只读。首次扫描前已物理删除的会话无法恢复，需在 `turn/end`、`session/flush`、`session/disposed` 边界捕获 live 状态。
 
 ## 7. 文档同步义务
 
