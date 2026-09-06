@@ -37,10 +37,6 @@ export interface ScanFallbackDeps {
   liveSessionOf?: (id: SessionId) => Session | undefined
 }
 
-function seedLengthOf(header: SessionRecord['header']): number | undefined {
-  const raw = (header as { seedLength?: unknown }).seedLength
-  return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined
-}
 
 function depthOf(header: SessionRecord['header']): number {
   return Number((header as { delegationDepth?: unknown }).delegationDepth) || 0
@@ -126,8 +122,9 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     if (!rec.persisted && !live) return { status: 'pending' as const, sessionId, key, fallback: stale }
 
     try {
-      const seedLength = seedLengthOf(header)
-      const events = live ? live.events : (await sq.readSession(sessionId)).events
+      const snapshot = live ? null : await sq.readSession(sessionId)
+      const seedLength = live ? live.inheritedEventCount : snapshot!.inheritedEventCount
+      const events = live ? live.snapshotEvents() : snapshot!.events
       const state = foldEvents(events, seedLength)
       const title = titleFromEvents(events)
       const counted = countUsageEvents(events, seedLength)

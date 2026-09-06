@@ -28,6 +28,10 @@
 | --- | --- | --- |
 | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI 卡片与热力图概览" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-sessions.png" width="200" alt="会话用量排行与服务商用量" /> |
 
+## 兼容性
+
+当前源码面向 DSH **0.1.2-rc.1**，Cordis 要求 **^4.0.1**。实时读取使用不可变会话快照，按精确继承事件数去重 Fork 用量。投影状态版本升级到 6 后重建缓存；不会删除原始日志或已保留的统计账本行。
+
 ## 安装
 
 插件以 bundle 形式发布：`dsh plugin add` 会把它追加到 profile 的 bundle 列表，patch 行负责挂载 Host 半。

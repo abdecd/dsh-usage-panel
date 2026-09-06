@@ -1,40 +1,10 @@
-// dsh-usage-panel · structural types for the browser-side context.
-// The runtime shapes are exactly what v0.1.0 already exercised; types are
-// local so the client bundle stays independent of host-side type packages.
-import type { ReactNode } from 'react'
+// Consume the target host declarations without bundling platform singletons.
+import type { Context } from '@deepseek-ai/cordis'
+import type { ClientConnectionRpc, ConnectionRpcResult, ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 
-export interface SlotsLike {
-  inject(slot: string, register: () => () => void): void
-  register(options: SlotRegisterOptions, render: () => ReactNode): () => void
-}
-
-export interface SlotRegisterOptions {
-  name: string
-  id: string
-  order: number
-  label?: string | (() => string)
-}
-
-export interface RpcResultLike<T> {
-  ok: boolean
-  value?: T
-  error?: { code: string; message: string; details: Record<string, unknown> }
-}
-
-export interface RpcLike {
-  call(channel: string, endpoint: string, payload?: unknown): Promise<RpcResultLike<unknown>>
-}
-
-export interface ClientCtx {
-  slots: SlotsLike
-  connection: { rpc: RpcLike }
-  locale?: {
-    register(ns: string, dicts: Record<string, Record<string, string>>): () => void
-    bind(ns: string): (key: string, params?: Record<string, unknown>) => string
-    getSnapshot(): { active: string }
-    subscribe?(fn: () => void): () => void
-  }
-  /** Cordis Context is the event emitter itself: ctx.on('locale/change', …). */
-  on?(event: string, cb: (snapshot: unknown) => void): () => void
-  effect(fn: () => (() => void) | void): void
-}
+export type RpcResultLike<T> = ConnectionRpcResult<T>
+export type RpcLike = ClientConnectionRpc
+export type ClientCtx = Pick<Context, 'slots' | 'locale' | 'on' | 'effect'> & { connection: ConnectionHandle }

@@ -12,16 +12,17 @@ import { USAGE_PANEL_KEY, applyEvent, initState, usagePanelSchema, type UsagePan
 // v4: fork-lineage boundary is authoritative via header.seedLength; fresh
 // sessions default to seq 0 so unseeded conversations count immediately.
 // v5: recover legacy assistant/message routes from message provenance.
-export const PROJECTION_STATE_VERSION = 5
+// v6: rc.1 initializes the fold from the exact inherited-event count.
+export const PROJECTION_STATE_VERSION = 6
 
-export const usagePanelProjectionDefinition: ProjectionDefinition<
-  typeof USAGE_PANEL_KEY,
-  UsagePanelState
-> = {
+type UsageProjectionDefinition = ProjectionDefinition<typeof USAGE_PANEL_KEY, UsagePanelState>
+export const usagePanelProjectionDefinition: UsageProjectionDefinition & {
+  wire: NonNullable<UsageProjectionDefinition['wire']>
+} = {
   key: USAGE_PANEL_KEY,
-  schema: usagePanelSchema,
-  init: initState,
+  stateSchema: usagePanelSchema,
+  init: (_header, inheritedEventCount) => initState(inheritedEventCount),
   apply: applyEvent,
-  view: (state) => state,
+  wire: { viewSchema: usagePanelSchema, view: (state) => state },
   stateVersion: PROJECTION_STATE_VERSION,
 }

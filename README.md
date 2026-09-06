@@ -28,6 +28,10 @@ Hovering a bar, heatmap cell, or donut segment shows the exact breakdown:
 | --- | --- | --- |
 | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI cards and heatmap overview" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-sessions.png" width="200" alt="Session ranking and provider breakdown" /> |
 
+## Compatibility
+
+This source targets DSH **0.1.2-rc.1** with Cordis **^4.0.1**. Live reads use immutable session snapshots and exact inherited-event counts for fork deduplication. Projection checkpoints are rebuilt at state version 6; original logs and retained usage ledger rows are not deleted.
+
 ## Install
 
 The plugin ships as a bundle: `dsh plugin add` appends it to the profile's bundle list, and the patch row activates the host half.

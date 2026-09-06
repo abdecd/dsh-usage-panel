@@ -77,6 +77,9 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
     usagePanel: UsagePanelState
   }
+  interface SessionProjectionStateMap {
+    usagePanel: UsagePanelState
+  }
 }
 
 const EMPTY: Buckets = Object.freeze({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })

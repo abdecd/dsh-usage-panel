@@ -108,10 +108,6 @@ export function apply(ctx: Context): void {
   const liveCaptureTails = new Map<string, Promise<void>>()
   const liveTitles = new Map<string, string | null>()
 
-  function seedLengthOf(header: SessionRecord['header']): number | undefined {
-    const raw = (header as { seedLength?: unknown }).seedLength
-    return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined
-  }
 
   function depthOf(header: SessionRecord['header']): number {
     return Number((header as { delegationDepth?: unknown }).delegationDepth) || 0
@@ -120,7 +116,7 @@ export function apply(ctx: Context): void {
   function titleOfLive(session: Session): string | null {
     const key = usageLedgerKey(session.header)
     if (liveTitles.has(key)) return liveTitles.get(key) ?? null
-    const title = titleFromEvents(session.events)
+    const title = titleFromEvents(session.snapshotEvents())
     liveTitles.set(key, title)
     return title
   }
@@ -209,12 +205,12 @@ export function apply(ctx: Context): void {
         const ledger = await historyReady
         if (!ledger || disposed) return
 
-        const seedLength = seedLengthOf(session.header)
+        const seedLength = session.inheritedEventCount
         let state: UsagePanelState
         if (mode === 'projection' && registry && !(seedLength && seedLength > 0)) {
-          state = registry.snapshot(session).values.usagePanel ?? foldEvents(session.events, seedLength)
+          state = registry.snapshot(session).values.usagePanel ?? foldEvents(session.snapshotEvents(), seedLength)
         } else {
-          state = foldEvents(session.events, seedLength)
+          state = foldEvents(session.snapshotEvents(), seedLength)
         }
         const projectionBacked = mode === 'projection' && registry && !(seedLength && seedLength > 0)
         await saveLedgerRow(
@@ -226,7 +222,7 @@ export function apply(ctx: Context): void {
             state,
             title: titleOfLive(session),
             depth: depthOf(session.header),
-            eventsCounted: projectionBacked ? 0 : countUsageEvents(session.events, seedLength),
+            eventsCounted: projectionBacked ? 0 : countUsageEvents(session.snapshotEvents(), seedLength),
             lastSeq: session.seq - 1,
           }),
         )
@@ -352,7 +348,6 @@ export function apply(ctx: Context): void {
         return { status: 'pending' as const, id, key: meta.key, fallback: stale }
       }
 
-      const seedLength = seedLengthOf(header)
       const depth = depthOf(header)
       try {
         let value: UsagePanelState | undefined
@@ -360,27 +355,23 @@ export function apply(ctx: Context): void {
         let counted = 0
         let lastSeq = -1
 
-        // Forked sessions must use their durable lineage boundary. This is the
-        // only path that needs a full fold, and only when this session changed.
-        if (seedLength !== undefined && seedLength > 0) {
-          const events = meta.live ? meta.live.events : (await sq!.readSession(id)).events
-          value = foldEvents(events, seedLength)
-          title = titleFromEvents(events)
-          counted = countUsageEvents(events, seedLength)
-          lastSeq = events.at(-1)?.seq ?? -1
-        } else if (meta.live) {
+        if (meta.live) {
+          const events = meta.live.snapshotEvents()
+          const inheritedEventCount = meta.live.inheritedEventCount
           if (registry) value = registry.snapshot(meta.live).values.usagePanel
-          if (!value) value = foldEvents(meta.live.events, seedLength)
-          title = titleFromEvents(meta.live.events)
-          counted = countUsageEvents(meta.live.events, seedLength)
+          if (!value) value = foldEvents(events, inheritedEventCount)
+          title = titleFromEvents(events)
+          counted = countUsageEvents(events, inheritedEventCount)
           lastSeq = meta.live.seq - 1
         } else {
-          // Normal persisted sessions use the framework's checkpoint + tail
-          // ladder; it does not replay the whole log on the cache hit path.
-          const snap = await projCache!.coldSnapshot(id)
+          // rc.1 coldSnapshot consumes one validated observation, not a session id.
+          // Keep its header, lineage and events together to avoid torn fork cuts.
+          const log = await sq!.readSession(id)
+          const snap = projCache!.coldSnapshot(log.session, log.inheritedEventCount, log.events)
           value = snap.values.usagePanel
+          title = titleFromEvents(log.events)
+          counted = countUsageEvents(log.events, log.inheritedEventCount)
           lastSeq = snap.asOfSeq
-          if (!value) return { status: 'pending' as const, id, key: meta.key, fallback: stale }
         }
 
         if (!value) return { status: 'pending' as const, id, key: meta.key, fallback: stale }

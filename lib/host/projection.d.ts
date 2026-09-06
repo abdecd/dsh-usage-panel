@@ -84,6 +84,9 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     interface SessionProjectionMap {
         usagePanel: UsagePanelState;
     }
+    interface SessionProjectionStateMap {
+        usagePanel: UsagePanelState;
+    }
 }
 export declare function initState(seedEnd?: number | null): UsagePanelState;
 /**

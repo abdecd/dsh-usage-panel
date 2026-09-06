@@ -15,7 +15,7 @@ DeepSeek Harness 的 Token 用量统计插件（设置页「消耗统计」）�
 ## 2. 常用命令（v0.2.0 TS 化后）
 
 ```sh
-npm install          # devDeps: typescript / esbuild / @types/react / @deepseek-ai/* (rc.6, 带 .d.ts；含 storage-domain 类型)
+npm install          # devDeps: typescript / esbuild / @types/react / @deepseek-ai/* (DSH 0.1.2-rc.1, Cordis ^4.0.1；含 storage-domain、renderer、settings 类型)
 npm run build        # esbuild: src/host → lib/index.js (ESM) + src/client → ModuleLoader CJS + 声明
 npm run typecheck    # tsc --noEmit (strict, noUncheckedIndexedAccess)
 npm test             # node --test（tests/ 纯函数单测，fixture 锁口径）
@@ -125,6 +125,13 @@ npm pack --dry-run   # 发布前人工确认清单
 - 优先使用 `SessionPersistence.listSnapshots()` 的不透明 revision，不要为检测 append-only 日志变化而重新读取并 hash 全量事件；revision 变化才允许重算该会话。
 - 账本 key 必须包含 `id + createdAt + cwd`，不能只用 SessionId：DSH SessionId 是可复用的 slot，避免新生命周期覆盖旧统计。
 - 账本写入必须 fail-soft，且不得响应归档/删除而删除账本行；原始日志只读。首次扫描前已物理删除的会话无法恢复，需在 `turn/end`、`session/flush`、`session/disposed` 边界捕获 live 状态。
+
+### 6.9 DSH 0.1.2-rc.1 迁移
+
+- 实时日志使用 `Session.snapshotEvents()`；持久 Fork 边界来自 `Session.inheritedEventCount` 或 `readSession()` 同一快照的字段，不再读取 `header.seedLength`。
+- 投影拆分 `SessionProjectionStateMap` / `SessionProjectionMap`，定义使用 `stateSchema`、`init(header, inheritedEventCount)`、`wire`；状态版本 6 强制重折。
+- `coldSnapshot(header, inheritedEventCount, events)` 不再接收 SessionId，调用方提供完整一致快照。
+- Client 类型直接引用 Cordis、connection、locale、renderer 与 settings 声明；类型依赖不是额外的运行时 inject 边。
 
 ## 7. 文档同步义务
 
