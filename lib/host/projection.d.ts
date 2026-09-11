@@ -88,6 +88,23 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
         usagePanel: UsagePanelState;
     }
 }
+declare module '@deepseek-ai/dsh-session/types' {
+    interface SessionEventMap {
+        'assistant/chunk': {
+            turn: number;
+            step: number;
+            chunk?: {
+                type?: string;
+                usage?: {
+                    inputTokens?: number;
+                    outputTokens?: number;
+                    cacheReadTokens?: number;
+                    cacheWriteTokens?: number;
+                };
+            };
+        };
+    }
+}
 export declare function initState(seedEnd?: number | null): UsagePanelState;
 /**
  * Pure transition: previous state + one committed session event → next state.

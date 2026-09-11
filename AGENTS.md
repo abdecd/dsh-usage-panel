@@ -39,7 +39,7 @@ npm pack --dry-run   # 发布前人工确认清单
 - host 错误只返回**机器可读错误码**，client 按码查词典渲染——禁止 host 返回中文文案再由 client 正则匹配翻译（dashboard `i18n.tsx:26-45` 的脆做法）。
 - 纯函数先行：聚合/单位换算/四分位/导出防护等逻辑必须先抽成纯函数 + 单测，再进 UI。
 - 客户端 bundle 形态是硬契约：`window.__ModuleLoader__.load({ id: 'dsh-usage-panel', factory(require) })`，`exports.apply` + `exports.inject`。改这个形状等于破坏宿主加载。构建 = esbuild + `scripts/wrap-client.mjs`（wrapper 里 `var React = require('react')` 供经典 JSX transform 使用）。
-- **数据路径二选一（同一 reducer）**：投影模式（`sessionProjections` + `sessionProjectionCache`，增量落盘）与全量重扫模式（`sessionQuery` 重放）共用 `src/host/projection.ts` 的 `applyEvent`。加记账逻辑只改 reducer + 单测，两路同时生效。模式切换在 `src/host/index.ts` 的 `mode` 判定，fail-soft（注册失败 → scan → none）。两路之上另有 `storageDomain` 的 `usage_stats` 历史账本：以 `SessionPersistence.listSnapshots()` 的 revision 命中每会话结果，原始日志删除后仍从账本聚合。
+- **数据路径二选一（同一 reducer）**：投影模式（`sessionProjections` + `sessionProjectionCache`，增量落盘）与全量重扫模式（`sessionQuery` 重放）共用 `src/host/projection.ts` 的 `applyEvent`。加记账逻辑只改 reducer + 单测，两路同时生效。模式切换在 `src/host/index.ts` 的 `mode` 判定，fail-soft（注册失败 → scan → none）。两路之上另有 `storageDomain` 的 `usage_stats` 历史账本：以 `SessionPersistence.list()`（旧版 `listSnapshots()`）的 revision 命中每会话结果，原始日志删除后仍从账本聚合。
 - 测试：`tests/*.test.ts` 用 esbuild 编译后跑 Node 内置 test runner；fixture 锁口径（UTC 日桶、fork 去重、重试替换、压缩归因）。
 
 ## 5. 正确性红线（本项目的壁垒，任何重构不得破坏）
@@ -122,7 +122,7 @@ npm pack --dry-run   # 发布前人工确认清单
 ### 6.8 永久统计账本（revision cache + archive/delete retention）
 
 - `sessionProjectionCache` 只是投影 checkpoint，不能单独保证原始会话删除后统计仍可见；`src/host/history.ts` 的 `usage_stats` 才是独立的历史统计账本。
-- 优先使用 `SessionPersistence.listSnapshots()` 的不透明 revision，不要为检测 append-only 日志变化而重新读取并 hash 全量事件；revision 变化才允许重算该会话。
+- 优先使用 `SessionPersistence.list()`（0.1.5-rc.2；旧版为 `listSnapshots()`）返回的不透明 revision，不要为检测 append-only 日志变化而重新读取并 hash 全量事件；revision 变化才允许重算该会话。
 - 账本 key 必须包含 `id + createdAt + cwd`，不能只用 SessionId：DSH SessionId 是可复用的 slot，避免新生命周期覆盖旧统计。
 - 账本写入必须 fail-soft，且不得响应归档/删除而删除账本行；原始日志只读。首次扫描前已物理删除的会话无法恢复，需在 `turn/end`、`session/flush`、`session/disposed` 边界捕获 live 状态。
 
@@ -132,6 +132,12 @@ npm pack --dry-run   # 发布前人工确认清单
 - 投影拆分 `SessionProjectionStateMap` / `SessionProjectionMap`，定义使用 `stateSchema`、`init(header, inheritedEventCount)`、`wire`；状态版本 6 强制重折。
 - `coldSnapshot(header, inheritedEventCount, events)` 不再接收 SessionId，调用方提供完整一致快照。
 - Client 类型直接引用 Cordis、connection、locale、renderer 与 settings 声明；类型依赖不是额外的运行时 inject 边。
+
+### 6.10 DSH 0.1.5-rc.2 刷新卡顿：revision API 改名
+
+- **现象**：升级到 0.1.5-rc.2 后，首次刷新仍能工作，但后续刷新重新读取所有历史会话，日志量大时 UI 长时间停在「刷新中」。
+- **根因**：`SessionPersistence` 把轻量 revision 列表从旧版 `listSnapshots()` 改为 `list()`；插件仍只探测旧方法，导致 revision map 永远为空，`usage_stats` 账本无法命中缓存。
+- **修复**：优先调用 `list()`，并保留 `listSnapshots()` 兼容旧宿主；revision 缺失时继续 fail-soft，但不得把它误认为稳定缓存命中。
 
 ## 7. 文档同步义务
 

@@ -4,7 +4,9 @@ import { Context } from '@deepseek-ai/cordis'
 import { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { usagePanelProjectionDefinition } from '../src/host/projection-unit.ts'
+import { listPersistenceRevisions } from '../src/host/index.ts'
 import { scanFallback } from '../src/host/scan.ts'
+import { usageLedgerKey } from '../src/host/history.ts'
 
 function bill(session: Session, input: number, step: number) {
   session.append('assistant/chunk', { turn: 1, step, chunk: { type: 'usage', usage: { inputTokens: input } } } as never)
@@ -21,6 +23,21 @@ function fork() {
   return child
 }
 
+test('rc.2 persistence list() revisions keep unchanged sessions on the ledger cache', async () => {
+  const live = fork()
+  let listCalls = 0
+  const errors: string[] = []
+  const revisions = await listPersistenceRevisions({
+    list: async () => {
+      listCalls += 1
+      return [{ header: live.header, revision: 'file:1' }]
+    },
+  }, (message) => errors.push(message))
+  assert.equal(listCalls, 1)
+  assert.equal(revisions.get(usageLedgerKey(live.header)), 'file:1')
+  assert.deepEqual(errors, [])
+})
+
 test('rc.1 live and restored snapshots exclude inherited usage and reread after appends', async () => {
   const live = fork()
   assert.equal('events' in live, false)
@@ -36,7 +53,7 @@ test('rc.1 live and restored snapshots exclude inherited usage and reread after 
   assert.equal((await scanFallback(deps, Date.now())).allTime.totals.input, 10)
   sq.listSessions = async () => [{ header: live.header, live: false, persisted: true }]
   assert.equal((await scanFallback(deps, Date.now())).allTime.totals.input, 10)
-  const restored = Session.fromRestore(live.id, live.snapshotEvents(), live.header, live.inheritedEventCount)
+  const restored = Session.fromRestore(live.id, live.snapshotEvents(), live.header, live.inheritedEventCount, 'detached')
   assert.equal(restored.inheritedEventCount, live.inheritedEventCount)
   assert.ok(restored.firstLiveSeq > restored.inheritedEventCount)
 })

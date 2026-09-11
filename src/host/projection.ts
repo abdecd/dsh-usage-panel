@@ -82,6 +82,24 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   }
 }
 
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    'assistant/chunk': {
+      turn: number
+      step: number
+      chunk?: {
+        type?: string
+        usage?: {
+          inputTokens?: number
+          outputTokens?: number
+          cacheReadTokens?: number
+          cacheWriteTokens?: number
+        }
+      }
+    }
+  }
+}
+
 const EMPTY: Buckets = Object.freeze({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
 
 export function initState(seedEnd: number | null = 0): UsagePanelState {

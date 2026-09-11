@@ -43,13 +43,43 @@ export const inject = ['timer', 'connection']
 const STALE_MS = 10 * 60 * 1000 // cache freshness window
 const RESCAN_MS = 10 * 60 * 1000 // periodic keep-warm rescan
 
-interface PersistenceSnapshotLike {
+export interface PersistenceSnapshotLike {
   header: SessionRecord['header']
-  revision: unknown
+  revision?: unknown
 }
 
-interface SessionPersistenceLike {
+export interface SessionPersistenceLike {
+  /** DSH ≤ 0.1.2 exposed listSnapshots(); 0.1.5 exposes list(). */
   listSnapshots?: () => Promise<readonly PersistenceSnapshotLike[]>
+  list?: () => Promise<readonly PersistenceSnapshotLike[]>
+}
+
+/** Read cheap per-session revisions without loading any event log. */
+export async function listPersistenceRevisions(
+  persistence: SessionPersistenceLike | undefined,
+  logFailure: (message: string) => void,
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  if (!persistence) return result
+  try {
+    // DSH 0.1.5 renamed the lightweight revision listing from
+    // `listSnapshots()` to `list()`. Keep the old spelling as a fallback so
+    // an older host still benefits from the ledger cache.
+    const snapshots =
+      typeof persistence.list === 'function'
+        ? await persistence.list()
+        : typeof persistence.listSnapshots === 'function'
+          ? await persistence.listSnapshots()
+          : []
+    for (const snapshot of snapshots) {
+      if (snapshot && snapshot.header && typeof snapshot.revision === 'string') {
+        result.set(usageLedgerKey(snapshot.header), snapshot.revision)
+      }
+    }
+  } catch (err) {
+    logFailure('session persistence revision listing failed; active sessions will be read conservatively: ' + String((err as Error)?.message ?? err))
+  }
+  return result
 }
 
 export function apply(ctx: Context): void {
@@ -141,19 +171,7 @@ export function apply(ctx: Context): void {
   }
 
   async function listRevisions(): Promise<Map<string, string>> {
-    const result = new Map<string, string>()
-    if (!persistence || typeof persistence.listSnapshots !== 'function') return result
-    try {
-      const snapshots = await persistence.listSnapshots()
-      for (const snapshot of snapshots) {
-        if (snapshot && snapshot.header && typeof snapshot.revision === 'string') {
-          result.set(usageLedgerKey(snapshot.header), snapshot.revision)
-        }
-      }
-    } catch (err) {
-      logFailure('session persistence revision listing failed; active sessions will be read conservatively: ' + String((err as Error)?.message ?? err))
-    }
-    return result
+    return listPersistenceRevisions(persistence, logFailure)
   }
 
   function cachedRowOf(
