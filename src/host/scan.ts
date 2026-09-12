@@ -27,9 +27,11 @@ import {
   type UsageLedger,
   type UsageLedgerRow,
 } from './history.ts'
+import { readSessionLog, type SessionPersistenceLike } from './session-read.ts'
 
 export interface ScanFallbackDeps {
   sq: SessionQueryEngine
+  persistence?: SessionPersistenceLike
   providerNames: Record<string, string>
   logFailure: (message: string) => void
   ledger?: UsageLedger | null
@@ -56,7 +58,7 @@ function cachedRowOf(
 }
 
 export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise<Overview> {
-  const { sq, providerNames, logFailure, ledger, revisions = new Map(), liveSessionOf } = deps
+  const { sq, persistence, providerNames, logFailure, ledger, revisions = new Map(), liveSessionOf } = deps
   const entries = ledger ? ledger.entries() : []
   const rowsByKey = new Map(entries)
   let a: Aggregate = emptyAggregate()
@@ -122,7 +124,7 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     if (!rec.persisted && !live) return { status: 'pending' as const, sessionId, key, fallback: stale }
 
     try {
-      const snapshot = live ? null : await sq.readSession(sessionId)
+      const snapshot = live ? null : await readSessionLog(sq, persistence, sessionId)
       const seedLength = live ? live.inheritedEventCount : snapshot!.inheritedEventCount
       const events = live ? live.snapshotEvents() : snapshot!.events
       const state = foldEvents(events, seedLength)

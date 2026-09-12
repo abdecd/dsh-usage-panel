@@ -43,16 +43,17 @@ export const inject = ['timer', 'connection']
 const STALE_MS = 10 * 60 * 1000 // cache freshness window
 const RESCAN_MS = 10 * 60 * 1000 // periodic keep-warm rescan
 
-export interface PersistenceSnapshotLike {
-  header: SessionRecord['header']
-  revision?: unknown
-}
-
-export interface SessionPersistenceLike {
-  /** DSH ≤ 0.1.2 exposed listSnapshots(); 0.1.5 exposes list(). */
-  listSnapshots?: () => Promise<readonly PersistenceSnapshotLike[]>
-  list?: () => Promise<readonly PersistenceSnapshotLike[]>
-}
+import {
+  readSessionLog,
+  type PersistenceSnapshotLike,
+  type SessionPersistenceLike,
+} from './session-read.ts'
+export type {
+  PersistenceSnapshotLike,
+  SessionPersistenceLike,
+  SessionHandleLike,
+  SessionLogSource,
+} from './session-read.ts'
 
 /** Read cheap per-session revisions without loading any event log. */
 export async function listPersistenceRevisions(
@@ -384,7 +385,7 @@ export function apply(ctx: Context): void {
         } else {
           // rc.1 coldSnapshot consumes one validated observation, not a session id.
           // Keep its header, lineage and events together to avoid torn fork cuts.
-          const log = await sq!.readSession(id)
+          const log = await readSessionLog(sq!, persistence, id)
           const snap = projCache!.coldSnapshot(log.session, log.inheritedEventCount, log.events)
           value = snap.values.usagePanel
           title = titleFromEvents(log.events)
@@ -487,6 +488,7 @@ export function apply(ctx: Context): void {
     const revisions = ledger ? await listRevisions() : new Map<string, string>()
     return scanFallback({
       sq: sq!,
+      persistence,
       providerNames,
       logFailure,
       ledger,

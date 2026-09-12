@@ -139,6 +139,12 @@ npm pack --dry-run   # 发布前人工确认清单
 - **根因**：`SessionPersistence` 把轻量 revision 列表从旧版 `listSnapshots()` 改为 `list()`；插件仍只探测旧方法，导致 revision map 永远为空，`usage_stats` 账本无法命中缓存。
 - **修复**：优先调用 `list()`，并保留 `listSnapshots()` 兼容旧宿主；revision 缺失时继续 fail-soft，但不得把它误认为稳定缓存命中。
 
+### 6.11 DSH 0.1.5-rc.2 上游 sessionQuery.readSession seeded constructor 报错降级
+
+- **现象**：后台警告 `X session(s) failed to read (first 3): seeded session constructor seed must equal its inherited prefix`，部分历史派生/Fork/Subagent 会话无法被统计。
+- **根因**：`@deepseek-ai/dsh-session-query` 0.1.5-rc.2 的 `readSession(sessionId)` 内部做回放校验时，错误调用了 `Session.create`（该构造器在 `mode === 'snapshot'` 时强制断言 `inheritedEventCount === this.log.length`，只适用于全新种子），而非从磁盘恢复的 `Session.fromRestore`。已落盘且产生后续事件的 seeded 会话必定触发断言失败。
+- **修复**：实现 `readSessionLog(sq, persistence, sessionId)` 优雅降级。当 `sq.readSession` 捕获到该特定错误时，降级使用 `sessionPersistence.open(id, 'read')` 直接读取底层事件流（底层为 `Session.fromRestore`，100% 成功），读取完毕立即关闭句柄释放资源；上游未来修复后直接走 `sq.readSession` 正常分支，两端无缝向前向后兼容。
+
 ## 7. 文档同步义务
 
 - 改功能必同步 README.md + README.zh-CN.md（双语等价、口径声明、安装方式不变）。
