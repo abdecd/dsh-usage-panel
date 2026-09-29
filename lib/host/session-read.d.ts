@@ -36,4 +36,4 @@ export declare function readSessionFromPersistence(persistence: SessionPersisten
  * Read a logical session log with graceful fallback to sessionPersistence
  * when the upstream sessionQuery.readSession suffers from the seeded constructor bug.
  */
-export declare function readSessionLog(sq: Pick<SessionQueryEngine, 'readSession'>, persistence: SessionPersistenceLike | undefined, sessionId: SessionId): Promise<SessionLogSource>;
+export declare function readSessionLog(sq: Pick<SessionQueryEngine, 'readSession'>, persistence: SessionPersistenceLike | undefined, sessionId: SessionId, persistedOnly?: boolean): Promise<SessionLogSource>;

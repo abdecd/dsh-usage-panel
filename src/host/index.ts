@@ -19,7 +19,7 @@ import type { Session, SessionId, SessionStore } from '@deepseek-ai/dsh-session'
 import type { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import type { SessionProjectionCache } from '@deepseek-ai/dsh-session-projection-cache'
 import { RPC_CHANNEL, RPC_OVERVIEW, type CoverageStats, type Overview, type RpcResult } from '../shared/contract.ts'
-import { mapConcurrent } from '../shared/usage.ts'
+import { mapScanSessions } from './scan-scheduler.ts'
 import { emptyAggregate, emptyOverview, finalizeOverview, mergeSessionValue, rankSessions } from './aggregate.ts'
 import { foldEvents, type UsagePanelState } from './projection.ts'
 import { PROJECTION_STATE_VERSION, usagePanelProjectionDefinition } from './projection-unit.ts'
@@ -41,7 +41,6 @@ export const name = 'dsh-usage-panel'
 export const inject = ['timer', 'connection']
 
 const STALE_MS = 10 * 60 * 1000 // cache freshness window
-const RESCAN_MS = 10 * 60 * 1000 // periodic keep-warm rescan
 
 import {
   readSessionLog,
@@ -166,7 +165,7 @@ export function apply(ctx: Context): void {
     revisions: ReadonlyMap<string, string>,
   ): { key: string; revision: string | null; live: Session | undefined } {
     const key = usageLedgerKey(rec.header)
-    const live = rec.live ? liveSessionOf(rec.header.id) : undefined
+    const live = liveSessionOf(rec.header.id)
     if (live) return { key, revision: 'live:' + live.seq, live }
     return { key, revision: revisions.get(key) ?? null, live }
   }
@@ -338,7 +337,7 @@ export function apply(ctx: Context): void {
 
     const currentKeys = new Set<string>()
     const seenKeys = new Set<string>()
-    const results = await mapConcurrent(sessions, 16, async (rec) => {
+    const results = await mapScanSessions(sessions, async (rec) => {
       const header = rec && rec.header
       if (!header) return { status: 'failed' as const, err: 'missing header' }
 
@@ -385,7 +384,10 @@ export function apply(ctx: Context): void {
         } else {
           // rc.1 coldSnapshot consumes one validated observation, not a session id.
           // Keep its header, lineage and events together to avoid torn fork cuts.
-          const log = await readSessionLog(sq!, persistence, id)
+          const log = await readSessionLog(sq!, persistence, id, !rec.live)
+          if (usageLedgerKey(log.session) !== meta.key) {
+            throw new Error('session lifecycle changed during scan; retry required')
+          }
           const snap = projCache!.coldSnapshot(log.session, log.inheritedEventCount, log.events)
           value = snap.values.usagePanel
           title = titleFromEvents(log.events)
@@ -417,7 +419,7 @@ export function apply(ctx: Context): void {
           fallback: stale,
         }
       }
-    })
+    }, () => disposed)
 
     for (const res of results) {
       sessionsTotal += 1
@@ -494,6 +496,7 @@ export function apply(ctx: Context): void {
       ledger,
       revisions,
       liveSessionOf,
+      isCancelled: () => disposed,
     }, now)
   }
 
@@ -516,7 +519,7 @@ export function apply(ctx: Context): void {
     const force = !!(args && args.force)
     if (!force && cache) {
       if (Date.now() - cache.at < STALE_MS) return Promise.resolve(cache.payload)
-      startScan() // stale-while-revalidate: background refresh
+      void startScan().catch((err) => logFailure('background scan failed: ' + String(err)))
       return Promise.resolve(Object.assign({}, cache.payload, { stale: true }))
     }
     return startScan()
@@ -549,28 +552,14 @@ export function apply(ctx: Context): void {
       { authority: 'loopback' },
     )
 
-  // Warm up the moment the plugin loads.
-  startScan().then((o) => {
-    console.log(
-      tag,
-      'first scan done:',
-      'mode=' + o.coverage.mode,
-      'sessions=' + o.coverage.sessionsTotal + '/' + o.coverage.sessionsOk + ' (failed ' + o.coverage.sessionsFailed + ', pending ' + o.coverage.sessionsPending + ')',
-      'withUsage=' + o.allTime.sessionCount,
-      'dataRange=' + (o.coverage.from === null ? '-' : new Date(o.coverage.from).toISOString()) + '..' + (o.coverage.to === null ? '-' : new Date(o.coverage.to).toISOString()),
-    )
-  })
-
-  // Keep-warm: light periodic rescan so the cached payload never goes stale.
-  const stopTimer = ctx.interval(() => {
-    if (!inflight) startScan()
-  }, RESCAN_MS)
+  // Historical backfill is demand-driven: no startup or idle full-log scans.
 
   ctx.effect(() => async () => {
     disposed = true
     if (disposeUnit) disposeUnit()
-    if (stopTimer) stopTimer()
     if (disposeRpc) disposeRpc()
+    await inflight?.catch(() => undefined)
+    await Promise.allSettled([...liveCaptureTails.values()])
     const ledger = await historyReady
     if (ledger) {
       try {

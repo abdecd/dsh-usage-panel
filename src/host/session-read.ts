@@ -1,3 +1,4 @@
+import { interruptedTurnClosers } from '@deepseek-ai/dsh-session'
 import type { SessionRecord, SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
 import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 
@@ -53,7 +54,8 @@ export async function readSessionFromPersistence(
     return {
       session: handle.header,
       inheritedEventCount: (Number(handle.inheritedEventCount) || 0) as SessionLogOffset,
-      events: result.events,
+      // Match query cold-read crash recovery without mutating persisted events.
+      events: [...result.events, ...interruptedTurnClosers(result.events)],
     }
   } finally {
     try {
@@ -70,7 +72,13 @@ export async function readSessionLog(
   sq: Pick<SessionQueryEngine, 'readSession'>,
   persistence: SessionPersistenceLike | undefined,
   sessionId: SessionId,
+  persistedOnly = false,
 ): Promise<SessionLogSource> {
+  // Only callers that have ruled out a live session may skip query replay.
+  // Persistence supplies the validated log and lineage from the same handle.
+  if (persistedOnly && typeof persistence?.open === 'function') {
+    return readSessionFromPersistence(persistence, sessionId)
+  }
   try {
     return await sq.readSession(sessionId)
   } catch (err) {

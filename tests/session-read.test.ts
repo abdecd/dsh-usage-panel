@@ -8,6 +8,7 @@ import {
   type SessionPersistenceLike,
 } from '../src/host/session-read.ts'
 import { scanFallback } from '../src/host/scan.ts'
+import { foldEvents } from '../src/host/projection.ts'
 
 test('isSeededSessionConstructorError identifies the upstream DSH bug message', () => {
   assert.equal(
@@ -120,7 +121,7 @@ test('readSessionLog rethrows original error when error is not seeded constructo
   assert.equal(persistenceCalled, false)
 })
 
-test('scanFallback recovers seeded sessions via persistence fallback and records usage', async () => {
+test('scanFallback reads cold persistence directly and preserves fork usage', async () => {
   const parent = Session.create(SessionId('parent-session'))
   parent.append('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'usage', usage: { inputTokens: 100 } } } as never)
   parent.append('step/end', { turn: 1, step: 1 } as never)
@@ -136,7 +137,7 @@ test('scanFallback recovers seeded sessions via persistence fallback and records
   const sq = {
     listSessions: async () => [{ header: childHeader, live: false, persisted: true }],
     readSession: async () => {
-      throw new Error('seeded session constructor seed must equal its inherited prefix')
+      assert.fail('cold scan must not invoke expensive query replay')
     },
   }
 
@@ -170,3 +171,29 @@ test('scanFallback recovers seeded sessions via persistence fallback and records
   assert.equal(handleClosed, true)
   assert.equal(overview.allTime.totals.input, 55)
 })
+
+for (const chunkOnly of [false, true]) {
+  test(`cold persistence repairs interrupted ${chunkOnly ? 'chunk' : 'message'} usage without changing source`, async () => {
+    const session = Session.create(SessionId('interrupted'))
+    session.append('turn/start', { turn: 1 } as never)
+    session.append('step/start', { turn: 1, step: 1 } as never)
+    if (chunkOnly) {
+      session.append('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'usage', usage: { inputTokens: 42 } } } as never)
+    }
+    const events = chunkOnly ? session.snapshotEvents() : [
+      ...session.snapshotEvents(),
+      { type: 'assistant/message', seq: session.seq, time: Date.now(), data: { turn: 1, step: 1, message: { role: 'assistant', content: [] }, usage: { inputTokens: 42 } } } as unknown as SessionEvent,
+    ]
+    const size = events.length
+    let closed = false
+    const snapshot = await readSessionLog({ readSession: async () => { assert.fail('query replay') } } as never, {
+      open: async () => ({
+        header: session.header, inheritedEventCount: 0,
+        read: async () => ({ events }), close: async () => { closed = true },
+      }),
+    }, session.id, true)
+    assert.equal(foldEvents(snapshot.events, 0).totals.input, 42)
+    assert.equal(events.length, size)
+    assert.equal(closed, true)
+  })
+}

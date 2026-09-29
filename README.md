@@ -57,7 +57,7 @@ dsh plugin --profile web remove dsh-usage-panel
 
 The host half aggregates persisted session logs and the independent historical ledger:
 
-- **Primary path (incremental)**: a session projection (registered through `ctx.sessionProjections`, `stateVersion`-checked) folds every committed event into four disjoint buckets — uncached input, output, cache read, cache write — plus per-model, per-provider and per-day (UTC) maps. Checkpoints are durable, so restarts and keep-warm passes cost almost no replay.
+- **Primary path (incremental)**: a session projection (registered through `ctx.sessionProjections`, `stateVersion`-checked) folds every committed event into four disjoint buckets — uncached input, output, cache read, cache write — plus per-model, per-provider and per-day (UTC) maps. Checkpoints are durable; unchanged ledger revisions avoid log reads.
 - **Historical statistics ledger**: the `storageDomain` `usage_stats` domain stores each calculated result by session lifecycle (`id + createdAt + cwd`) together with the persistence revision. An unchanged revision is reused directly; only a changed session is recalculated. Ledger rows are never deleted when a conversation is archived or its raw log is deleted.
 - **Fallback path (revision-aware)**: when projection services are unavailable, the same reducer computes through the read-only `sessionQuery` service; a cached session whose revision is unchanged is not read again.
 
@@ -67,11 +67,11 @@ Accounting rules: `request/header` and `request/context` events record the model
 
 **Timezone declaration**: day buckets and exports use **UTC** calendar days (`YYYY-MM-DD`); the heatmap subtitle declares the scope ("last 6 months · UTC").
 
-The plugin never writes back to the original session logs; it only writes a separate derived statistics ledger. Statistics therefore survive restarts. Once the initial scan has recorded a session, its Token history remains after the conversation is archived or its raw log is deleted. Existing sessions are backfilled on the first startup; a session physically deleted before that first scan cannot be recovered.
+The plugin never writes back to the original session logs; it only writes a separate derived statistics ledger. Statistics therefore survive restarts. Once the initial scan has recorded a session, its Token history remains after the conversation is archived or its raw log is deleted. Existing sessions are backfilled on the first Usage request; a session physically deleted before that first scan cannot be recovered.
 
 ## Loading behavior
 
-The first scan starts as soon as the plugin loads, so the page usually renders straight from cache. The host first loads the durable ledger and lightweight per-log revisions: an unchanged revision reuses its saved result, while only new or changed sessions are computed and saved. A payload is considered fresh for 10 minutes; older ones are returned immediately with a `stale` flag (the page shows "updating in background") while a rescan refreshes the cache. A keep-warm timer rescans every 10 minutes, and the refresh button always forces a synchronous scan. The browser additionally keeps the last successful payload in `localStorage` (versioned and structure-validated), so a page refresh renders instantly; a failed refresh keeps the cached numbers and says so instead of faking freshness.
+Historical scans are demand-driven: opening Usage (requesting overview) or pressing refresh triggers a scan; startup and unattended 10-minute scans are removed. Scans process one session at a time and yield to the event loop between sessions. Initial backfill may take longer, but avoids 16 simultaneous log replays. Persisted, non-live sessions prefer a read-only persistence handle, avoiding redundant query-layer listing, cloning and replay; live sessions still prefer memory. Revision caching, 10-minute freshness, request-triggered stale-while-revalidate and browser localStorage caching remain. Live sessions still save their ledger at turn/end, flush and disposal. Unloading stops new scan work and drains in-flight work before closing the ledger.
 
 ## Units
 
@@ -83,7 +83,7 @@ Source is TypeScript (strict) in `src/`, built with esbuild; the `lib/` outputs 
 
 | File | Role |
 | --- | --- |
-| `src/host/index.ts` → `lib/index.js` | Host half (Cordis plugin): projection registration, durable statistics ledger, aggregation, cached RPC with warm-up, fail-soft fallback |
+| `src/host/index.ts` → `lib/index.js` | Host half (Cordis plugin): projection registration, durable statistics ledger, aggregation, demand-driven cached RPC, fail-soft fallback |
 | `src/host/projection.ts` | Pure per-session projection reducer (four buckets, fork dedup, retry/compaction semantics, UTC days) |
 | `src/host/history.ts` | Independent durable statistics ledger (revision hits, lifecycle isolation, retention after archive/delete) |
 | `src/host/aggregate.ts` | Cross-session merge → overview payload |

@@ -145,6 +145,12 @@ npm pack --dry-run   # 发布前人工确认清单
 - **根因**：`@deepseek-ai/dsh-session-query` 0.1.5-rc.2 的 `readSession(sessionId)` 内部做回放校验时，错误调用了 `Session.create`（该构造器在 `mode === 'snapshot'` 时强制断言 `inheritedEventCount === this.log.length`，只适用于全新种子），而非从磁盘恢复的 `Session.fromRestore`。已落盘且产生后续事件的 seeded 会话必定触发断言失败。
 - **修复**：实现 `readSessionLog(sq, persistence, sessionId)` 优雅降级。当 `sq.readSession` 捕获到该特定错误时，降级使用 `sessionPersistence.open(id, 'read')` 直接读取底层事件流（底层为 `Session.fromRestore`，100% 成功），读取完毕立即关闭句柄释放资源；上游未来修复后直接走 `sq.readSession` 正常分支，两端无缝向前向后兼容。
 
+### 6.12 启动与空载 CPU：历史扫描不应无条件预热
+
+- 启动扫描 + 每 10 分钟保鲜 + 16 路冷日志读取会在无人访问统计页时制造解压、对象分配和 GC 峰值；改为 overview 按需扫描、单路处理并让出事件循环，卸载停止新任务并等待在途工作。
+- 0.1.7-rc.2 的 query 冷读取会逐会话重新 list 全部历史，并多次 clone / 回放事件。非 live 会话可走只读 persistence 句柄；live 仍优先内存。原始日志、Fork inheritedEventCount 与 revision 缓存口径不变。
+- 代价：旧会话首次回填移到首次打开统计页；首次扫描前已删除的原始日志仍无法恢复。不要宣称单路扫描限制了单个大日志的 CPU 使用率。
+
 ## 7. 文档同步义务
 
 - 改功能必同步 README.md + README.zh-CN.md（双语等价、口径声明、安装方式不变）。

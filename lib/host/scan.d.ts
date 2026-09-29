@@ -4,6 +4,7 @@ import type { Overview } from '../shared/contract.ts';
 import { type UsageLedger } from './history.ts';
 import { type SessionPersistenceLike } from './session-read.ts';
 export interface ScanFallbackDeps {
+    isCancelled?: () => boolean;
     sq: SessionQueryEngine;
     persistence?: SessionPersistenceLike;
     providerNames: Record<string, string>;

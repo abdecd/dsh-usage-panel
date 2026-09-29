@@ -14,7 +14,7 @@ import type { SessionTitleEventData } from '@deepseek-ai/dsh-session-title'
 import type { LlmRetryEventData } from '@deepseek-ai/dsh-llm-retry'
 import type { CompactionId } from '@deepseek-ai/dsh-compaction'
 import type { Overview } from '../shared/contract.ts'
-import { mapConcurrent } from '../shared/usage.ts'
+import { mapScanSessions } from './scan-scheduler.ts'
 import { emptyAggregate, finalizeOverview, mergeSessionValue, type Aggregate } from './aggregate.ts'
 import { foldEvents } from './projection.ts'
 import { PROJECTION_STATE_VERSION } from './projection-unit.ts'
@@ -30,6 +30,7 @@ import {
 import { readSessionLog, type SessionPersistenceLike } from './session-read.ts'
 
 export interface ScanFallbackDeps {
+  isCancelled?: () => boolean
   sq: SessionQueryEngine
   persistence?: SessionPersistenceLike
   providerNames: Record<string, string>
@@ -96,14 +97,14 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     })
   }
 
-  const results = await mapConcurrent(sessions, 16, async (rec) => {
+  const results = await mapScanSessions(sessions, async (rec) => {
     const header = rec && rec.header
     if (!header) return { status: 'failed' as const, err: 'missing header' }
 
     const sessionId = header.id
     const key = usageLedgerKey(header)
     currentKeys.add(key)
-    const live = rec.live && liveSessionOf ? liveSessionOf(sessionId) : undefined
+    const live = liveSessionOf?.(sessionId)
     const revision = live ? 'live:' + live.seq : revisions.get(key) ?? null
     const stored = rowsByKey.get(key)
     const cached = cachedRowOf(stored, header, revision)
@@ -124,7 +125,10 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
     if (!rec.persisted && !live) return { status: 'pending' as const, sessionId, key, fallback: stale }
 
     try {
-      const snapshot = live ? null : await readSessionLog(sq, persistence, sessionId)
+      const snapshot = live ? null : await readSessionLog(sq, persistence, sessionId, !rec.live)
+      if (snapshot && usageLedgerKey(snapshot.session) !== key) {
+        throw new Error('session lifecycle changed during scan; retry required')
+      }
       const seedLength = live ? live.inheritedEventCount : snapshot!.inheritedEventCount
       const events = live ? live.snapshotEvents() : snapshot!.events
       const state = foldEvents(events, seedLength)
@@ -160,7 +164,7 @@ export async function scanFallback(deps: ScanFallbackDeps, now: number): Promise
         fallback: stale,
       }
     }
-  })
+  }, deps.isCancelled)
 
   for (const res of results) {
     sessionsTotal += 1
