@@ -15,7 +15,7 @@ DeepSeek Harness 的 Token 用量统计插件（设置页「消耗统计」）�
 ## 2. 常用命令（v0.2.0 TS 化后）
 
 ```sh
-npm install          # devDeps: typescript / esbuild / @types/react / @deepseek-ai/* (DSH 0.1.2-rc.1, Cordis ^4.0.1；含 storage-domain、renderer、settings 类型)
+npm install          # devDeps: typescript / esbuild / @types/react / @deepseek-ai/* (DSH 0.2.0-rc.2, Cordis ^4.0.4, peer ^4.0.1；含 storage-domain、renderer、settings 类型)
 npm run build        # esbuild: src/host → lib/index.js (ESM) + src/client → ModuleLoader CJS + 声明
 npm run typecheck    # tsc --noEmit (strict, noUncheckedIndexedAccess)
 npm test             # node --test（tests/ 纯函数单测，fixture 锁口径）
@@ -150,6 +150,17 @@ npm pack --dry-run   # 发布前人工确认清单
 - 启动扫描 + 每 10 分钟保鲜 + 16 路冷日志读取会在无人访问统计页时制造解压、对象分配和 GC 峰值；改为 overview 按需扫描、单路处理并让出事件循环，卸载停止新任务并等待在途工作。
 - 0.1.7-rc.2 的 query 冷读取会逐会话重新 list 全部历史，并多次 clone / 回放事件。非 live 会话可走只读 persistence 句柄；live 仍优先内存。原始日志、Fork inheritedEventCount 与 revision 缓存口径不变。
 - 代价：旧会话首次回填移到首次打开统计页；首次扫描前已删除的原始日志仍无法恢复。不要宣称单路扫描限制了单个大日志的 CPU 使用率。
+
+### 6.13 DSH 0.2.0-rc.2 迁移与 Peer 范围适配
+
+- **现象/背景**：宿主进入 0.2.0-rc.2 时代，DSH 对 `peerDependencies` 进行硬性版本范围检查（DSH-0.2.0-RC1-01）。声明 `^0.1.x` 或不含 prerelease 的 `^0.2.0`（在 `includePrerelease: true` 语义下要求 `>=0.2.0 <0.3.0-0`，拒绝 `0.2.0-rc.2`）都会被宿主静默禁用插件。
+- **适配方案**：
+  1. `peerDependencies` 中所有 `@deepseek-ai/dsh-*` 包统一升级为 `^0.2.0-rc.2`（涵盖 0.2.0-rc.2 及后续 0.2.x 稳定版/补丁）；`@deepseek-ai/cordis` peer 保持 `^4.0.1` 宽范围兼容。
+  2. `devDependencies` 统一锁定 14 项 `@deepseek-ai/dsh-*` 为 `0.2.0-rc.2`，并将 `@deepseek-ai/cordis` dev 提升至 `^4.0.4`（满足 0.2.0-rc.2 子包 `~4.0.4` 的 peer 约束，使 `pnpm peers check` exit 0）；插件自身版本保持 `0.2.0`（不自动 selfbump）。
+  3. `pnpm-workspace.yaml` 中 31 项 `minimumReleaseAgeExclude` 同步更新至 `0.2.0-rc.2`。
+  4. 新增 `tests/migration.test.ts` 中的 0.2.0-rc.2 peer 与 cohort 回归测试，确保依赖无遗留 0.1.x cohort。
+  5. 事件模型（`assistant/chunk`、`assistant/message`、`compaction/summary`、`llm/retry` 等）未发生语义断裂，因此 `PROJECTION_STATE_VERSION` 保持 6，四桶记账、fork 血缘去重、UTC 日桶与原始日志只读红线保持不变。
+- **验证边界**：静态类型（`tsc` strict）、纯函数与调度回归测试（86 passed）、构建产物（`build`）、peer 校验（`pnpm peers check`）与打包门禁（`check-pack` 19 files）均已在独立测试环境中验证通过。未在生产 Profile 或启动宿主进程跑真实 provider 流量，记录不扩大宣称未经测试的真实运行时范围。
 
 ## 7. 文档同步义务
 

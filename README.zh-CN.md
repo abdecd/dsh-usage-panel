@@ -28,9 +28,12 @@
 | --- | --- | --- |
 | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="柱状图悬停明细" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI 卡片与热力图概览" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-sessions.png" width="200" alt="会话用量排行与服务商用量" /> |
 
-## 兼容性
+## 兼容性与验证状态
 
-当前源码面向 DSH **0.1.2-rc.1**，Cordis 要求 **^4.0.1**。实时读取使用不可变会话快照，按精确继承事件数去重 Fork 用量。投影状态版本升级到 6 后重建缓存；不会删除原始日志或已保留的统计账本行。
+- **目标版本**：面向 DSH **0.2.0-rc.2** 与 Cordis **^4.0.1**（声明 `peerDependencies: ^0.2.0-rc.2`，`devDependencies: 0.2.0-rc.2`）。
+- **已确证门禁**：TypeScript 严格类型检查（`tsc`）、自动化测试套件（86 项全部通过）、esbuild 产物构建（`lib/index.js`、`lib/client.js`、`lib/host/*.d.ts`）以及打包门禁（`check-pack` 验证 19 个文件无静态资产泄漏）均已在 DSH 0.2.0-rc.2 类型与隔离测试环境中验证通过。
+- **未验证边界**：在生产 Profile 宿主守护进程真实启动、Web GUI 浏览器挂载以及真实 LLM Provider 推理流量均未做实机验证，不扩大宣称未经测试的运行时兼容性。
+- **核心口径**：实时读取使用不可变会话快照，按精确继承事件数去重 Fork 用量。投影状态版本保持在 6；不会修改或删除原始日志，已保留的统计账本行长期留存。
 
 ## 安装
 

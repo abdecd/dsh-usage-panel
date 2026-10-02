@@ -28,9 +28,12 @@ Hovering a bar, heatmap cell, or donut segment shows the exact breakdown:
 | --- | --- | --- |
 | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-hover-bar.png" width="200" alt="Bar hover tooltip" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-overview.png" width="200" alt="KPI cards and heatmap overview" /> | <img src="https://raw.githubusercontent.com/AlfredChaos/dsh-usage-panel/main/assets/screenshot-sessions.png" width="200" alt="Session ranking and provider breakdown" /> |
 
-## Compatibility
+## Compatibility & Verification
 
-This source targets DSH **0.1.2-rc.1** with Cordis **^4.0.1**. Live reads use immutable session snapshots and exact inherited-event counts for fork deduplication. Projection checkpoints are rebuilt at state version 6; original logs and retained usage ledger rows are not deleted.
+- **Target Version**: DSH **0.2.0-rc.2** with Cordis **^4.0.1** (declared `peerDependencies: ^0.2.0-rc.2`, `devDependencies: 0.2.0-rc.2`).
+- **Verified Offline Gates**: TypeScript strict typecheck (`tsc`), automated test suite (86 passed), esbuild packaging (`lib/index.js`, `lib/client.js`, `lib/host/*.d.ts`), and tarball pack gate (`check-pack` with zero static assets) all pass under DSH 0.2.0-rc.2 type definitions and mock runtime environments.
+- **Unverified Boundaries**: Live runtime execution on a running production DSH 0.2.0-rc.2 host process, GUI browser mount, and live LLM provider inference remain unverified.
+- **Core Invariants**: Live reads use immutable session snapshots and exact inherited-event counts for fork deduplication. Projection checkpoints are kept at state version 6; original session logs and retained usage ledger rows are never deleted.
 
 ## Install
 

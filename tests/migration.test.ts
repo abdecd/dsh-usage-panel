@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
@@ -22,6 +23,28 @@ function fork() {
   bill(child, 7, 2)
   return child
 }
+
+test('0.2.0-rc.2 target peer dependencies and cohort consistency', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const peerDeps = pkg.peerDependencies || {}
+  const devDeps = pkg.devDependencies || {}
+
+  // All @deepseek-ai/dsh-* peer dependencies must use exact ^0.2.0-rc.2 range
+  for (const [name, range] of Object.entries(peerDeps)) {
+    if (name.startsWith('@deepseek-ai/dsh-')) {
+      assert.equal(range, '^0.2.0-rc.2', `peerDependency ${name} should have exact '^0.2.0-rc.2' range, got ${range}`)
+    }
+  }
+
+  // All @deepseek-ai/dsh-* devDependencies must be 0.2.0-rc.2 exact cohort
+  for (const [name, ver] of Object.entries(devDeps)) {
+    if (name.startsWith('@deepseek-ai/dsh-')) {
+      assert.equal(ver, '0.2.0-rc.2', `devDependency ${name} should be exact '0.2.0-rc.2', got ${ver}`)
+    }
+  }
+
+  assert.equal(pkg.version, '0.2.0', 'Plugin self version should remain 0.2.0 (no selfbump)')
+})
 
 test('rc.2 persistence list() revisions keep unchanged sessions on the ledger cache', async () => {
   const live = fork()
